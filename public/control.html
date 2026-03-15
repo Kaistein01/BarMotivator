@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Control Panel - Rattenfest 2026</title>
+    <style>
+        :root {
+            --bg: #0d0f14;
+            --surface: #161b26;
+            --border: rgba(255, 255, 255, 0.06);
+            --text: #e2e8f0;
+            --danger: #ef4444;
+            --danger-hover: #dc2626;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 40px;
+            border-radius: 14px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            max-width: 400px;
+            width: 100%;
+        }
+
+        h1 {
+            margin-top: 0;
+            font-size: 1.5rem;
+        }
+
+        p {
+            color: #94a3b8;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+
+        button {
+            background: var(--danger);
+            color: white;
+            border: none;
+            padding: 14px 24px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            transition: background 0.2s;
+        }
+
+        .btn-danger:hover {
+            background: var(--danger-hover);
+        }
+
+        .btn-test {
+            background: var(--accent);
+            margin-top: 15px;
+        }
+
+        .btn-test:hover {
+            background: var(--accent-hover);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #status {
+            margin-top: 20px;
+            font-weight: 600;
+            min-height: 24px;
+        }
+
+        .success {
+            color: #22c55e;
+        }
+
+        .error {
+            color: var(--danger);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <h1>⚠️ Danger Zone</h1>
+        <p>This action will permanently erase all data points from the dashboard.</p>
+        <button id="clear-btn" class="btn-danger">ERASE ALL DATA</button>
+
+        <h1 style="margin-top: 30px;">🛠️ Debug Mode</h1>
+        <p>Enable debug mode to allow custom timestamps and stress testing tools.</p>
+        <button id="debug-toggle-btn" class="btn-test" style="background:#475569; margin-bottom: 20px;">Enable Debug
+            Mode</button>
+
+        <div id="testing-tools" style="opacity: 0.5; pointer-events: none; transition: opacity 0.3s;">
+            <p>Generate future events starting from the latest recorded timestamp.</p>
+            <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px;">
+                <input type="number" id="test-samples" value="400" min="1" placeholder="Samples"
+                    style="padding: 10px; width: 100px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: inherit; font-size: 1rem;" />
+                <span style="display: flex; align-items: center; color: var(--text);">samples for</span>
+                <input type="number" id="test-hours" value="4" min="0.1" step="0.1" placeholder="Hours"
+                    style="padding: 10px; width: 80px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: inherit; font-size: 1rem;" />
+                <span style="display: flex; align-items: center; color: var(--text);">hours</span>
+            </div>
+            <button id="test-custom-btn" class="btn-test" style="margin-top: 0;">Generate Events</button>
+        </div>
+
+        <div id="status"></div>
+    </div>
+    <script type="module" src="/js/control.js"></script>
+</body>
+
+</html>

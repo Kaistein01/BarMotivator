@@ -1,0 +1,50 @@
+[
+  {
+    "name": "alpha",
+    "color": "#E6194B"
+  },
+  {
+    "name": "beta",
+    "color": "#3CB44B"
+  },
+  {
+    "name": "gamma",
+    "color": "#FFE119"
+  },
+  {
+    "name": "delta",
+    "color": "#4363D8"
+  },
+  {
+    "name": "epsilon",
+    "color": "#F58231"
+  },
+  {
+    "name": "zeta",
+    "color": "#911EB4"
+  },
+  {
+    "name": "eta",
+    "color": "#46F0F0"
+  },
+  {
+    "name": "theta",
+    "color": "#F032E6"
+  },
+  {
+    "name": "iota",
+    "color": "#BCF60C"
+  },
+  {
+    "name": "kappa",
+    "color": "#FABED4"
+  },
+  {
+    "name": "lambda",
+    "color": "#008080"
+  },
+  {
+    "name": "mu",
+    "color": "#E6BEFF"
+  }
+]

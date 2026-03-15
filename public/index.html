@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rattenfest 2026 – Live Dashboard</title>
+    <meta name="description" content="Real-time category leaderboard and timeline for Rattenfest 2026." />
+    <link rel="stylesheet" href="/style.css" />
+    <!-- socket.io for real-time signaling -->
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+
+<body>
+    <div id="app">
+        <!-- ── Left 66%: timeline chart ──────────────────────────────────── -->
+        <section class="panel" id="chart-panel" aria-label="Timeline chart">
+            <p class="panel-title">
+                <span class="live-dot" title="Live Connection (Socket.io/WebRTC)"></span>
+                Cumulative Timeline
+            </p>
+            <div id="chart-wrapper">
+                <canvas id="timeline-chart" aria-label="Category timeline graph" role="img"></canvas>
+            </div>
+            <div id="webrtc-status" style="margin-top: 10px; font-size: 0.8rem; color: #888;">
+                Peers: <span id="peer-count">0</span> connected.
+            </div>
+        </section>
+
+        <!-- ── Right 33%: leaderboard ─────────────────────────────────────── -->
+        <section class="panel" id="leaderboard-panel" aria-label="Leaderboard">
+            <p class="panel-title">Leaderboard</p>
+            <div id="leaderboard">
+                <!-- populated by app.js -->
+                <div class="empty-state">
+                    <span>📡</span>
+                    <p>Loading entries...</p>
+                </div>
+            </div>
+        </section>
+    </div>
+    <script type="module" src="/js/main.js"></script>
+</body>
+
+</html>

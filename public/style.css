@@ -1,0 +1,201 @@
+/* =====================================================================
+   style.css  –  Dark-mode premium dashboard
+   ===================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #0d0f14;
+  --surface: #161b26;
+  --surface2: #1e2536;
+  --border: rgba(255, 255, 255, 0.06);
+  --text: #e2e8f0;
+  --text-muted: #64748b;
+  --accent: #38bdf8;
+  --radius: 14px;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+html,
+body {
+  height: 100%;
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+/* ── Layout ─────────────────────────────────────────────────────────── */
+#app {
+  display: flex;
+  height: 100vh;
+  padding: 20px;
+  gap: 20px;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(8px);
+  padding: 24px;
+  overflow: hidden;
+  position: relative;
+}
+
+#chart-panel {
+  flex: 2;
+  /* 66% */
+  display: flex;
+  flex-direction: column;
+}
+
+#leaderboard-panel {
+  flex: 1;
+  /* 33% */
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Panel headers ───────────────────────────────────────────────────── */
+.panel-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 24px;
+}
+
+/* ── Chart wrapper ───────────────────────────────────────────────────── */
+#chart-wrapper {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+}
+
+#timeline-chart {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* ── Leaderboard ─────────────────────────────────────────────────────── */
+#leaderboard {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+#leaderboard::-webkit-scrollbar {
+  display: none;
+}
+
+.lb-item {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 18px 24px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.35s ease;
+  cursor: default;
+}
+
+.lb-item:hover {
+  transform: translateX(4px);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.lb-rank {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  width: 44px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.lb-rank.top1 {
+  color: #ffd700;
+  font-size: 1.8rem;
+}
+
+.lb-rank.top2 {
+  color: #c0c0c0;
+  font-size: 1.6rem;
+}
+
+.lb-rank.top3 {
+  color: #cd7f32;
+  font-size: 1.6rem;
+}
+
+.lb-swatch {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  box-shadow: 0 0 14px currentColor;
+}
+
+.lb-name {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text);
+  text-transform: capitalize;
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: 1.3rem;
+  gap: 12px;
+}
+
+.empty-state span {
+  font-size: 3.5rem;
+}
+
+/* ── Pulse dot (live indicator) ──────────────────────────────────────── */
+.live-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #22c55e;
+  margin-right: 10px;
+  animation: pulse 2s infinite;
+  vertical-align: baseline;
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
+  }
+
+  50% {
+    box-shadow: 0 0 0 5px rgba(34, 197, 94, 0);
+  }
+}
