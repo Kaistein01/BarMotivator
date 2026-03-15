@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const AppConfig = require('../config/AppConfig');
 
 /**
@@ -12,6 +13,18 @@ class ApiServer {
         this.app = express();
 
         this.isDebugMode = false;
+
+        // Load wheel configuration
+        const wheelConfigPath = path.join(__dirname, '..', '..', 'wheel-config.json');
+        this.wheelFields = JSON.parse(fs.readFileSync(wheelConfigPath, 'utf-8')).fields;
+
+        // Wheel spin state machine
+        this.wheelState = {
+            status: 'idle',        // 'idle' | 'spinning' | 'stopping'
+            selectedFieldIndex: null,
+            spinStartedAt: null,   // Date.now() when spin started
+            autoStopTimer: null
+        };
 
         this._configureMiddleware();
         this._configureRoutes();
@@ -98,7 +111,71 @@ class ApiServer {
             res.json({ debug: this.isDebugMode });
         });
 
-        // HTML Panel Routes
+        // ── Spin Wheel Routes ─────────────────────────────────────────────────
+
+        // Serve spin page
+        this.app.get('/spin', (_req, res) => {
+            res.sendFile(path.join(__dirname, '..', '..', 'public', 'spin.html'));
+        });
+
+        // Wheel config (fields without sensitive data)
+        this.app.get('/api/spin/config', (_req, res) => {
+            res.json({ fields: this.wheelFields });
+        });
+
+        // Current wheel state (polled by the browser)
+        this.app.get('/api/spin/state', (_req, res) => {
+            const { status, selectedFieldIndex, spinStartedAt } = this.wheelState;
+            res.json({ status, selectedFieldIndex, spinStartedAt });
+        });
+
+        // Start spinning – only allowed when idle
+        this.app.get('/api/spin/start', (_req, res) => {
+            if (this.wheelState.status !== 'idle') {
+                return res.status(409).json({ error: 'Wheel is not idle', status: this.wheelState.status });
+            }
+
+            const fieldIndex = this._selectWeightedField();
+            this.wheelState.status = 'spinning';
+            this.wheelState.selectedFieldIndex = fieldIndex;
+            this.wheelState.spinStartedAt = Date.now();
+
+            // Auto-stop after AUTO_STOP_SECONDS if stop is not called
+            const AUTO_STOP_MS = 10000;
+            this.wheelState.autoStopTimer = setTimeout(() => {
+                if (this.wheelState.status === 'spinning') {
+                    this.wheelState.status = 'stopping';
+                }
+            }, AUTO_STOP_MS);
+
+            res.json({ status: 'started', fieldIndex });
+        });
+
+        // Stop spinning – only allowed while spinning
+        this.app.get('/api/spin/stop', (_req, res) => {
+            if (this.wheelState.status !== 'spinning') {
+                return res.status(409).json({ error: 'Wheel is not spinning', status: this.wheelState.status });
+            }
+
+            clearTimeout(this.wheelState.autoStopTimer);
+            this.wheelState.autoStopTimer = null;
+            this.wheelState.status = 'stopping';
+
+            res.json({ status: 'stopping', fieldIndex: this.wheelState.selectedFieldIndex });
+        });
+
+        // Complete result display – browser calls this after showing result for 7 s
+        this.app.get('/api/spin/complete', (_req, res) => {
+            clearTimeout(this.wheelState.autoStopTimer);
+            this.wheelState.autoStopTimer = null;
+            this.wheelState.status = 'idle';
+            this.wheelState.selectedFieldIndex = null;
+            this.wheelState.spinStartedAt = null;
+            res.json({ status: 'idle' });
+        });
+
+        // ── HTML Panel Routes ─────────────────────────────────────────────────
+
         this.app.get('/', (req, res) => {
             res.sendFile(path.join(__dirname, '..', '..', 'public', 'index.html'));
         });
@@ -106,6 +183,18 @@ class ApiServer {
         this.app.get('/control', (req, res) => {
             res.sendFile(path.join(__dirname, '..', '..', 'public', 'control.html'));
         });
+    }
+
+    /** Weighted random selection over wheel fields */
+    _selectWeightedField() {
+        const fields = this.wheelFields;
+        const total = fields.reduce((sum, f) => sum + (f.probability || 0), 0);
+        let r = Math.random() * total;
+        for (let i = 0; i < fields.length; i++) {
+            r -= fields[i].probability || 0;
+            if (r <= 0) return i;
+        }
+        return fields.length - 1;
     }
 
     getApp() {

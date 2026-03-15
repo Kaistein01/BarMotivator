@@ -115,4 +115,118 @@ describe('ApiServer', () => {
             expect(mockSignaling.broadcastDebugState).toHaveBeenCalledWith(true);
         });
     });
+
+    describe('Spin wheel endpoints', () => {
+        afterEach(() => {
+            // Clean up any pending auto-stop timers
+            if (api.wheelState.autoStopTimer) {
+                clearTimeout(api.wheelState.autoStopTimer);
+                api.wheelState.autoStopTimer = null;
+            }
+            api.wheelState.status = 'idle';
+            api.wheelState.selectedFieldIndex = null;
+            api.wheelState.spinStartedAt = null;
+        });
+
+        describe('GET /api/spin/config', () => {
+            it('should return wheel fields', async () => {
+                const res = await request(app).get('/api/spin/config');
+                expect(res.status).toBe(200);
+                expect(res.body).toHaveProperty('fields');
+                expect(Array.isArray(res.body.fields)).toBe(true);
+                expect(res.body.fields.length).toBeGreaterThan(0);
+                expect(res.body.fields[0]).toHaveProperty('label');
+                expect(res.body.fields[0]).toHaveProperty('color');
+                expect(res.body.fields[0]).toHaveProperty('probability');
+                expect(res.body.fields[0]).toHaveProperty('fireworks');
+            });
+        });
+
+        describe('GET /api/spin/state', () => {
+            it('should return idle state initially', async () => {
+                const res = await request(app).get('/api/spin/state');
+                expect(res.status).toBe(200);
+                expect(res.body.status).toBe('idle');
+            });
+        });
+
+        describe('GET /api/spin/start', () => {
+            it('should start spinning from idle and return started status', async () => {
+                const res = await request(app).get('/api/spin/start');
+                expect(res.status).toBe(200);
+                expect(res.body.status).toBe('started');
+                expect(typeof res.body.fieldIndex).toBe('number');
+                expect(api.wheelState.status).toBe('spinning');
+                expect(api.wheelState.spinStartedAt).toBeTruthy();
+            });
+
+            it('should return 409 when already spinning', async () => {
+                await request(app).get('/api/spin/start');
+                const res = await request(app).get('/api/spin/start');
+                expect(res.status).toBe(409);
+            });
+
+            it('should select a valid field index', async () => {
+                const res = await request(app).get('/api/spin/start');
+                expect(res.body.fieldIndex).toBeGreaterThanOrEqual(0);
+                expect(res.body.fieldIndex).toBeLessThan(api.wheelFields.length);
+            });
+        });
+
+        describe('GET /api/spin/stop', () => {
+            it('should transition to stopping when spinning', async () => {
+                await request(app).get('/api/spin/start');
+                const res = await request(app).get('/api/spin/stop');
+                expect(res.status).toBe(200);
+                expect(res.body.status).toBe('stopping');
+                expect(typeof res.body.fieldIndex).toBe('number');
+                expect(api.wheelState.status).toBe('stopping');
+            });
+
+            it('should return 409 when not spinning', async () => {
+                const res = await request(app).get('/api/spin/stop');
+                expect(res.status).toBe(409);
+            });
+
+            it('should not be callable twice', async () => {
+                await request(app).get('/api/spin/start');
+                await request(app).get('/api/spin/stop');
+                const res = await request(app).get('/api/spin/stop');
+                expect(res.status).toBe(409);
+            });
+        });
+
+        describe('GET /api/spin/complete', () => {
+            it('should reset state to idle', async () => {
+                await request(app).get('/api/spin/start');
+                await request(app).get('/api/spin/stop');
+                const res = await request(app).get('/api/spin/complete');
+                expect(res.status).toBe(200);
+                expect(res.body.status).toBe('idle');
+                expect(api.wheelState.status).toBe('idle');
+                expect(api.wheelState.selectedFieldIndex).toBeNull();
+            });
+        });
+
+        describe('Full spin cycle', () => {
+            it('should go start → state shows spinning → stop → complete → state idle', async () => {
+                await request(app).get('/api/spin/start');
+
+                let stateRes = await request(app).get('/api/spin/state');
+                expect(stateRes.body.status).toBe('spinning');
+                expect(stateRes.body.spinStartedAt).toBeTruthy();
+
+                await request(app).get('/api/spin/stop');
+
+                stateRes = await request(app).get('/api/spin/state');
+                expect(stateRes.body.status).toBe('stopping');
+                expect(typeof stateRes.body.selectedFieldIndex).toBe('number');
+
+                await request(app).get('/api/spin/complete');
+
+                stateRes = await request(app).get('/api/spin/state');
+                expect(stateRes.body.status).toBe('idle');
+            });
+        });
+    });
 });
