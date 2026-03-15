@@ -193,7 +193,8 @@ export class TimelineChart extends UIComponent {
         state.categories.forEach((cat, idx) => {
             this.ctx.fillStyle = cat.color;
             const val = currentTotals[cat.name];
-            this.ctx.fillText(cat.name + ": " + val.toFixed(1), tx + 10, ty + 35 + idx * 20);
+            const displayName = cat.displayName || cat.name;
+            this.ctx.fillText(displayName + ": " + val.toFixed(1), tx + 10, ty + 35 + idx * 20);
         });
     }
 }

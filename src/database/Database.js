@@ -16,9 +16,9 @@ class Database {
                         id           INTEGER PRIMARY KEY AUTOINCREMENT,
                         timestamp    TEXT    NOT NULL,
                         category     TEXT    NOT NULL,
-                        counter1     INTEGER NOT NULL,
-                        counter2     INTEGER NOT NULL,
-                        counter3     INTEGER NOT NULL,
+                        Bier     INTEGER NOT NULL,
+                        Cocktail     INTEGER NOT NULL,
+                        Shot     INTEGER NOT NULL,
                         weighted_sum REAL    NOT NULL
                     )
                 `, (err) => {
@@ -33,7 +33,7 @@ class Database {
         return new Promise((resolve, reject) => {
             const weightedSum = c1 * this.weights.c1 + c2 * this.weights.c2 + c3 * this.weights.c3;
             this.db.run(
-                `INSERT INTO entries (timestamp, category, counter1, counter2, counter3, weighted_sum) VALUES (?, ?, ?, ?, ?, ?)`,
+                `INSERT INTO entries (timestamp, category, Bier, Cocktail, Shot, weighted_sum) VALUES (?, ?, ?, ?, ?, ?)`,
                 [timestamp, category, c1, c2, c3, weightedSum],
                 function (err) {
                     if (err) reject(err);

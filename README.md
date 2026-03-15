@@ -19,28 +19,41 @@ A real-time dashboard and timeline charting application built with Node.js, Expr
 
 ## Application Interfaces
 
-- **Live Dashboard**: [http://localhost:3000](http://localhost:3000)
-- **Control Panel**: [http://localhost:3000/control](http://localhost:3000/control) (Used to clear all timeline data)
+- **Live Dashboard**: [http://localhost:3000](http://localhost:3000) – Real-time timeline chart and leaderboard
+- **Control Panel**: [http://localhost:3000/control](http://localhost:3000/control) – Debug tools and data management
+- **Fortune Wheel**: [http://localhost:3000/spin](http://localhost:3000/spin) – Standalone fortune wheel (also integrated into dashboard)
 
 ## Directory Architecture
 The platform is built on fully-modular, DRY principles across both the Node.js backend and the browser frontend:
 
 ```
-Graph/
+BarMotivator/
 ├── server.js                      # Entry point, orchestrates backend modules
+├── wheel-config.json              # Fortune wheel field definitions & probabilities
+├── categories.json                # Data category definitions
+├── package.json                   # Dependencies (express, socket.io, sqlite3)
 ├── src/                           # Backend Classes
 │   ├── config/AppConfig.js        # Config loader
 │   ├── database/Database.js       # SQLite wrapper
 │   └── server/
-│       ├── ApiServer.js           # Express API endpoints
+│       ├── ApiServer.js           # Express API endpoints & wheel state management
 │       └── SignalingServer.js     # Socket.io/WebRTC endpoints
-└── public/                        # Static HTML and Assets
-    └── js/                        # Frontend ES6 Modules
-        ├── main.js                # Index controller
-        ├── control.js             # Testing Panel controller
-        ├── core/                  # Base classes (Store, UIComponent)
-        ├── components/            # UI subclasses (TimelineChart, Leaderboard)
-        └── network/               # SocketClient, WebRTCManager
+├── public/                        # Static HTML and Assets
+│   ├── index.html                 # Live Dashboard (with integrated wheel overlay)
+│   ├── control.html               # Control Panel
+│   ├── spin.html                  # Standalone Fortune Wheel page
+│   ├── style.css                  # Shared styles (dashboard + wheel)
+│   └── js/                        # Frontend ES6 Modules
+│       ├── main.js                # Dashboard controller
+│       ├── control.js             # Control Panel controller
+│       ├── spin.js                # Fortune wheel app (overlay mode)
+│       ├── core/                  # Base classes (Store, UIComponent)
+│       ├── components/            # UI subclasses (TimelineChart, Leaderboard)
+│       └── network/               # SocketClient, WebRTCManager
+└── tests/                         # Test Suite (Jest + Supertest)
+    ├── AppConfig.test.js
+    ├── Database.test.js
+    └── ApiServer.test.js
 ```
 
 ## API Reference
@@ -53,15 +66,15 @@ Use the `/log` endpoint to insert new data into the timeline.
 **Endpoint:** `GET /log`
 
 **Parameters:**
-- `counter1` (integer) - Value for the first counter.
-- `counter2` (integer) - Value for the second counter.
-- `counter3` (integer) - Value for the third counter.
+- `Bier` (integer) - Value for the first counter.
+- `Cocktail` (integer) - Value for the second counter.
+- `Shot` (integer) - Value for the third counter.
 - `category` (string) - Must match one of the categories defined in `categories.json` (e.g., `alpha`, `beta`, `gamma`).
 - `timestamp` (string, optional) - Custom timeline timestamp (e.g. `2026-03-09T08:00:00`). **Requires Debug Mode to be active**.
 
 **Example Request:**
 ```bash
-curl "http://localhost:3000/log?counter1=1&counter2=2&counter3=3&category=alpha"
+curl "http://localhost:3000/log?Bier=1&Cocktail=2&Shot=3&category=alpha"
 ```
 **Success Response:** `OK` (HTTP 200)
 **Error Response:** `ERROR` (HTTP 400) if parameters are missing/invalid or the category is unknown.
@@ -97,6 +110,218 @@ Enables or disables "Debug Mode", which allows custom timestamps to be injected 
 curl -X POST -H 'Content-Type: application/json' -d '{"debug":true}' http://localhost:3000/api/debug
 ```
 **Returns:** `{"debug": true}`
+
+---
+
+## Fortune Wheel API
+
+The fortune wheel is an interactive overlay that appears on the dashboard. Control it via these endpoints.
+
+### 5. Get Wheel Configuration
+
+Fetch the wheel field definitions, colors, probabilities, and fireworks settings.
+
+**Endpoint:** `GET /api/spin/config`
+
+**Returns:** JSON object with `fields` array containing:
+```json
+{
+  "fields": [
+    { "label": "$1000", "color": "#e53e3e", "probability": 0.03, "fireworks": true },
+    { "label": "$900", "color": "#dd6b20", "probability": 0.05, "fireworks": true },
+    ...
+  ]
+}
+```
+
+### 6. Get Current Wheel State
+
+Poll this endpoint to track the wheel's status and properties. Clients poll every ~200ms to sync state changes.
+
+**Endpoint:** `GET /api/spin/state`
+
+**Returns:** JSON object with current state:
+```json
+{
+  "status": "idle | spinning | stopping",
+  "selectedFieldIndex": null | 0-9,
+  "spinStartedAt": null | <unix-ms-timestamp>,
+  "deviceId": null | <integer>
+}
+```
+
+**Status values:**
+- `idle` – Wheel is at rest, ready to spin
+- `spinning` – Wheel is actively spinning (10-second countdown active)
+- `stopping` – Wheel is decelerating to land on target field
+
+### 7. Start Spinning
+
+Begin a new spin. Only allowed when status is `idle`. A winning field is selected via weighted random, and a 10-second auto-stop timer is activated.
+
+**Endpoint:** `GET /api/spin/start`
+
+**Query Parameters:**
+- `device` (integer, optional) – Device ID that triggered the spin (e.g., `?device=1`). Enables device-locking for stop.
+
+**Example Requests:**
+```bash
+# Start without device tracking
+curl "http://localhost:3000/api/spin/start"
+
+# Start with device ID (enables device-locking)
+curl "http://localhost:3000/api/spin/start?device=1"
+```
+
+**Success Response (HTTP 200):**
+```json
+{ "status": "started", "fieldIndex": 3, "deviceId": 1 }
+```
+
+**Error Response (HTTP 409):**
+```json
+{ "error": "Wheel is not idle", "status": "spinning" }
+```
+
+### 8. Stop Spinning
+
+Stop the wheel at the pre-selected field. Only allowed while status is `spinning`. Triggers smooth deceleration animation.
+
+**Endpoint:** `GET /api/spin/stop`
+
+**Query Parameters:**
+- `device` (integer, optional) – Device ID stopping the spin. Must match the device that started it (if device-locking is active).
+
+**Device-Locking Rules:**
+- If spin started **with** device ID (e.g., `device=1`), stop **must** provide the same device ID
+- If spin started **without** device ID, stop can be called with or without a device ID
+- Mismatched device IDs return **HTTP 403 Forbidden**
+
+**Example Requests:**
+```bash
+# Stop without device (allowed if started without device)
+curl "http://localhost:3000/api/spin/stop"
+
+# Stop with device (must match start device if device-locking is active)
+curl "http://localhost:3000/api/spin/stop?device=1"
+```
+
+**Success Response (HTTP 200):**
+```json
+{ "status": "stopping", "fieldIndex": 3, "stopDeviceId": 1 }
+```
+
+**Device-Lock Violation (HTTP 403):**
+```json
+{
+  "error": "Only the device that started the spin can stop it",
+  "requiredDeviceId": 1,
+  "attemptedDeviceId": 2
+}
+```
+
+**Not Spinning Error (HTTP 409):**
+```json
+{ "error": "Wheel is not spinning", "status": "idle" }
+```
+
+### 9. Complete Result Display
+
+Called by the browser after showing the result for 7 seconds. Resets the wheel to `idle` state.
+
+**Endpoint:** `GET /api/spin/complete`
+
+**Returns:**
+```json
+{ "status": "idle" }
+```
+
+---
+
+## HTML Page Routes
+
+### 10. Live Dashboard
+
+Serves the main dashboard with real-time timeline chart and leaderboard, with integrated fortune wheel overlay.
+
+**Endpoint:** `GET /`
+
+**Returns:** HTML page
+
+### 11. Control Panel
+
+Serves the debug/control panel for testing and data management.
+
+**Endpoint:** `GET /control`
+
+**Returns:** HTML page
+
+### 12. Fortune Wheel (Standalone)
+
+Serves the fortune wheel as a standalone full-screen page (also available as overlay in dashboard).
+
+**Endpoint:** `GET /spin`
+
+**Returns:** HTML page
+
+## Fortune Wheel Configuration
+
+The wheel is defined in `wheel-config.json`. Each field has:
+
+- **label** – Display text (e.g., "$1000")
+- **color** – Hex color code
+- **probability** – Decimal probability (0.0 to 1.0) of landing on this field
+- **fireworks** – Boolean whether to show fireworks animation on win
+
+**Visual vs. Probability:**
+- All segments have **equal visual area** on the wheel (same angle)
+- But segments have **different probabilities** of being selected
+- This creates the appearance that some prizes are "harder to win"
+
+**Example from wheel-config.json:**
+```json
+{
+  "fields": [
+    { "label": "$1000", "color": "#e53e3e", "probability": 0.03, "fireworks": true },
+    { "label": "$900", "color": "#dd6b20", "probability": 0.05, "fireworks": true },
+    { "label": "$100", "color": "#319795", "probability": 0.15, "fireworks": false }
+  ]
+}
+```
+
+The probabilities don't need to sum to exactly 1.0; the system normalizes them internally.
+
+---
+
+## Wheel Animation Details
+
+### Spinning Phase
+- Constant rotation at ~3 rotations/second
+- Countdown timer shows remaining seconds until auto-stop
+- Countdown starts at 10 seconds and counts down
+- Auto-stop triggers if `/api/spin/stop` is not called within 10 seconds
+
+### Stopping Phase
+- Realistic **cubic ease-out deceleration** (spring physics)
+- Wheel decelerates smoothly over 5–7 seconds
+- Landing field is pre-selected server-side at spin start
+- Pointer at top of wheel aligns with winning field segment
+- 5–8 extra full rotations added for visual drama
+
+### Result Display
+- Prize label shown in large, glowing text for 7 seconds
+- Fireworks animation (if enabled for that field)
+- Result overlay fades out smoothly
+- Wheel overlay collapses and disappears (fly-out animation)
+- Dashboard returns to normal
+
+### Device Tracking
+- Each wheel spin can be associated with a device ID (e.g., phone #1, phone #2)
+- Device badge shows in top-right corner during spin
+- Only the device that started the spin can stop it (device-locking)
+- Useful for multi-player/multi-device bar events
+
+---
 
 ## Testing
 

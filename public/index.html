@@ -39,7 +39,27 @@
             </div>
         </section>
     </div>
+    <!-- ── Fortune Wheel Overlay ─────────────────────────────────────────── -->
+    <div id="wheel-overlay">
+        <canvas id="wheel-canvas"></canvas>
+
+        <!-- Device badge (top right) -->
+        <div id="spin-device-badge">
+            <span class="badge-dot"></span>
+            Device #<span id="spin-device-id"></span>
+        </div>
+
+        <!-- Result overlay -->
+        <div id="spin-result-overlay">
+            <div id="spin-result-inner">
+                <div id="spin-result-won">You won</div>
+                <div id="spin-result-label"></div>
+            </div>
+        </div>
+    </div>
+
     <script type="module" src="/js/main.js"></script>
+    <script type="module" src="/js/spin.js"></script>
 </body>
 
 </html>

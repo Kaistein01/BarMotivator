@@ -35,7 +35,7 @@ describe('ApiServer', () => {
         });
 
         it('should validate category and return 400 if unknown', async () => {
-            const res = await request(app).get('/log?counter1=1&counter2=2&counter3=3&category=unknownCat');
+            const res = await request(app).get('/log?Bier=1&Cocktail=2&Shot=3&category=unknownCat');
             expect(res.status).toBe(400);
             expect(res.text).toBe('ERROR');
         });
@@ -44,7 +44,7 @@ describe('ApiServer', () => {
             // Mock the DB insert to return a static weighted sum
             mockDb.insertEntry.mockResolvedValue(10.5);
 
-            const res = await request(app).get('/log?counter1=1&counter2=2&counter3=3&category=alpha');
+            const res = await request(app).get('/log?Bier=1&Cocktail=2&Shot=3&category=ET');
 
             expect(res.status).toBe(200);
             expect(res.text).toBe('OK');
@@ -55,14 +55,14 @@ describe('ApiServer', () => {
             // Expect Broadcast
             expect(mockSignaling.broadcastNewEntry).toHaveBeenCalledTimes(1);
             const broadcastedArg = mockSignaling.broadcastNewEntry.mock.calls[0][0];
-            expect(broadcastedArg.category).toBe('alpha');
+            expect(broadcastedArg.category).toBe('ET');
             expect(broadcastedArg.weighted_sum).toBe(10.5);
         });
 
         it('should ignore provided timestamps if debug mode is OFF and log normally', async () => {
             // debug mode is FALSE by default
             mockDb.insertEntry.mockResolvedValue(10.5);
-            const res = await request(app).get('/log?counter1=1&counter2=2&counter3=3&category=alpha&timestamp=2026-03-09T10:00:00');
+            const res = await request(app).get('/log?Bier=1&Cocktail=2&Shot=3&category=ET&timestamp=2026-03-09T10:00:00');
             expect(res.status).toBe(200);
             expect(res.text).toBe('OK');
         });
@@ -72,22 +72,22 @@ describe('ApiServer', () => {
             api.isDebugMode = true;
             mockDb.insertEntry.mockResolvedValue(10.5);
 
-            const res = await request(app).get('/log?counter1=1&counter2=2&counter3=3&category=alpha&timestamp=2026-03-09T10:00:00');
+            const res = await request(app).get('/log?Bier=1&Cocktail=2&Shot=3&category=ET&timestamp=2026-03-09T10:00:00');
             expect(res.status).toBe(200);
-            expect(mockDb.insertEntry).toHaveBeenCalledWith('2026-03-09T10:00:00', 'alpha', 1, 2, 3);
+            expect(mockDb.insertEntry).toHaveBeenCalledWith('2026-03-09T10:00:00', 'ET', 1, 2, 3);
         });
     });
 
     describe('GET /api/data', () => {
         it('should return categories and entries from db', async () => {
-            mockDb.getAllEntries.mockResolvedValue([{ category: 'alpha', weighted_sum: 5 }]);
+            mockDb.getAllEntries.mockResolvedValue([{ category: 'ET', weighted_sum: 5 }]);
 
             const res = await request(app).get('/api/data');
             expect(res.status).toBe(200);
             expect(res.body).toHaveProperty('categories');
             expect(res.body).toHaveProperty('entries');
             expect(res.body.entries.length).toBe(1);
-            expect(res.body.entries[0].category).toBe('alpha');
+            expect(res.body.entries[0].category).toBe('ET');
         });
     });
 
@@ -147,6 +147,7 @@ describe('ApiServer', () => {
                 const res = await request(app).get('/api/spin/state');
                 expect(res.status).toBe(200);
                 expect(res.body.status).toBe('idle');
+                expect(res.body.deviceId).toBeNull();
             });
         });
 
@@ -171,10 +172,24 @@ describe('ApiServer', () => {
                 expect(res.body.fieldIndex).toBeGreaterThanOrEqual(0);
                 expect(res.body.fieldIndex).toBeLessThan(api.wheelFields.length);
             });
+
+            it('should store deviceId when ?device param is provided', async () => {
+                const res = await request(app).get('/api/spin/start?device=3');
+                expect(res.status).toBe(200);
+                expect(res.body.deviceId).toBe(3);
+                expect(api.wheelState.deviceId).toBe(3);
+            });
+
+            it('should set deviceId to null when ?device param is absent', async () => {
+                const res = await request(app).get('/api/spin/start');
+                expect(res.status).toBe(200);
+                expect(res.body.deviceId).toBeNull();
+                expect(api.wheelState.deviceId).toBeNull();
+            });
         });
 
         describe('GET /api/spin/stop', () => {
-            it('should transition to stopping when spinning', async () => {
+            it('should transition to stopping when spinning (no device)', async () => {
                 await request(app).get('/api/spin/start');
                 const res = await request(app).get('/api/spin/stop');
                 expect(res.status).toBe(200);
@@ -194,38 +209,84 @@ describe('ApiServer', () => {
                 const res = await request(app).get('/api/spin/stop');
                 expect(res.status).toBe(409);
             });
+
+            it('should return stopDeviceId when ?device param is provided', async () => {
+                await request(app).get('/api/spin/start');
+                const res = await request(app).get('/api/spin/stop?device=2');
+                expect(res.status).toBe(200);
+                expect(res.body.stopDeviceId).toBe(2);
+            });
+
+            it('should allow stop without device when started without device', async () => {
+                await request(app).get('/api/spin/start');
+                const res = await request(app).get('/api/spin/stop');
+                expect(res.status).toBe(200);
+                expect(res.body.status).toBe('stopping');
+            });
+
+            it('should enforce device-locking: reject stop from wrong device', async () => {
+                await request(app).get('/api/spin/start?device=1');
+                const res = await request(app).get('/api/spin/stop?device=2');
+                expect(res.status).toBe(403);
+                expect(res.body.error).toContain('Only the device that started the spin');
+                expect(res.body.requiredDeviceId).toBe(1);
+                expect(res.body.attemptedDeviceId).toBe(2);
+                // Wheel should still be spinning
+                expect(api.wheelState.status).toBe('spinning');
+            });
+
+            it('should allow stop from same device (device-locking)', async () => {
+                await request(app).get('/api/spin/start?device=3');
+                const res = await request(app).get('/api/spin/stop?device=3');
+                expect(res.status).toBe(200);
+                expect(res.body.status).toBe('stopping');
+                expect(api.wheelState.status).toBe('stopping');
+            });
+
+            it('should reject stop without device when started with device', async () => {
+                await request(app).get('/api/spin/start?device=5');
+                const res = await request(app).get('/api/spin/stop');
+                expect(res.status).toBe(403);
+                expect(res.body.error).toContain('Only the device that started the spin');
+                expect(api.wheelState.status).toBe('spinning');
+            });
         });
 
         describe('GET /api/spin/complete', () => {
-            it('should reset state to idle', async () => {
-                await request(app).get('/api/spin/start');
+            it('should reset state to idle and clear deviceId', async () => {
+                await request(app).get('/api/spin/start?device=5');
                 await request(app).get('/api/spin/stop');
                 const res = await request(app).get('/api/spin/complete');
                 expect(res.status).toBe(200);
                 expect(res.body.status).toBe('idle');
                 expect(api.wheelState.status).toBe('idle');
                 expect(api.wheelState.selectedFieldIndex).toBeNull();
+                expect(api.wheelState.deviceId).toBeNull();
             });
         });
 
         describe('Full spin cycle', () => {
-            it('should go start → state shows spinning → stop → complete → state idle', async () => {
-                await request(app).get('/api/spin/start');
+            it('should propagate deviceId through the full cycle', async () => {
+                await request(app).get('/api/spin/start?device=7');
 
                 let stateRes = await request(app).get('/api/spin/state');
                 expect(stateRes.body.status).toBe('spinning');
                 expect(stateRes.body.spinStartedAt).toBeTruthy();
+                expect(stateRes.body.deviceId).toBe(7);
 
-                await request(app).get('/api/spin/stop');
+                // Must stop with the same device due to device-locking
+                await request(app).get('/api/spin/stop?device=7');
 
                 stateRes = await request(app).get('/api/spin/state');
                 expect(stateRes.body.status).toBe('stopping');
                 expect(typeof stateRes.body.selectedFieldIndex).toBe('number');
+                expect(stateRes.body.deviceId).toBe(7);
 
                 await request(app).get('/api/spin/complete');
 
                 stateRes = await request(app).get('/api/spin/state');
                 expect(stateRes.body.status).toBe('idle');
+                expect(stateRes.body.deviceId).toBeNull();
             });
         });
     });

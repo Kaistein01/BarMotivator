@@ -23,6 +23,7 @@ class ApiServer {
             status: 'idle',        // 'idle' | 'spinning' | 'stopping'
             selectedFieldIndex: null,
             spinStartedAt: null,   // Date.now() when spin started
+            deviceId: null,        // integer device id that triggered the spin
             autoStopTimer: null
         };
 
@@ -41,9 +42,9 @@ class ApiServer {
 
         // Data Insertion Route
         this.app.get('/log', async (req, res) => {
-            const c1 = parseInt(req.query.counter1, 10);
-            const c2 = parseInt(req.query.counter2, 10);
-            const c3 = parseInt(req.query.counter3, 10);
+            const c1 = parseInt(req.query.Bier, 10);
+            const c2 = parseInt(req.query.Cocktail, 10);
+            const c3 = parseInt(req.query.Shot, 10);
             const category = req.query.category || '';
 
             if (isNaN(c1) || isNaN(c2) || isNaN(c3) || !validCategoryNames.has(category)) {
@@ -78,7 +79,7 @@ class ApiServer {
         });
 
         // Historical Data Route
-        this.app.get('/api/data', async (req, res) => {
+        this.app.get('/api/data', async (_req, res) => {
             try {
                 const entries = await this.db.getAllEntries();
                 res.json({ categories: categoriesInfo, entries });
@@ -89,7 +90,7 @@ class ApiServer {
         });
 
         // Dashboard Clear Route
-        this.app.post('/api/clear', async (req, res) => {
+        this.app.post('/api/clear', async (_req, res) => {
             try {
                 await this.db.clearEntries();
                 this.signaling.broadcastClear();
@@ -101,7 +102,7 @@ class ApiServer {
         });
 
         // Debug Toggle Routes
-        this.app.get('/api/debug', (req, res) => {
+        this.app.get('/api/debug', (_req, res) => {
             res.json({ debug: this.isDebugMode });
         });
 
@@ -125,22 +126,25 @@ class ApiServer {
 
         // Current wheel state (polled by the browser)
         this.app.get('/api/spin/state', (_req, res) => {
-            const { status, selectedFieldIndex, spinStartedAt } = this.wheelState;
-            res.json({ status, selectedFieldIndex, spinStartedAt });
+            const { status, selectedFieldIndex, spinStartedAt, deviceId } = this.wheelState;
+            res.json({ status, selectedFieldIndex, spinStartedAt, deviceId });
         });
 
         // Start spinning – only allowed when idle
-        this.app.get('/api/spin/start', (_req, res) => {
+        // Optional query param: ?device=<integer>
+        this.app.get('/api/spin/start', (req, res) => {
             if (this.wheelState.status !== 'idle') {
                 return res.status(409).json({ error: 'Wheel is not idle', status: this.wheelState.status });
             }
 
+            const deviceId = req.query.device !== undefined ? parseInt(req.query.device, 10) : null;
             const fieldIndex = this._selectWeightedField();
             this.wheelState.status = 'spinning';
             this.wheelState.selectedFieldIndex = fieldIndex;
             this.wheelState.spinStartedAt = Date.now();
+            this.wheelState.deviceId = Number.isFinite(deviceId) ? deviceId : null;
 
-            // Auto-stop after AUTO_STOP_SECONDS if stop is not called
+            // Auto-stop after 10 s if /api/spin/stop is not called
             const AUTO_STOP_MS = 10000;
             this.wheelState.autoStopTimer = setTimeout(() => {
                 if (this.wheelState.status === 'spinning') {
@@ -148,20 +152,37 @@ class ApiServer {
                 }
             }, AUTO_STOP_MS);
 
-            res.json({ status: 'started', fieldIndex });
+            res.json({ status: 'started', fieldIndex, deviceId: this.wheelState.deviceId });
         });
 
         // Stop spinning – only allowed while spinning
-        this.app.get('/api/spin/stop', (_req, res) => {
+        // Optional query param: ?device=<integer>
+        // Device-locking: if spin was started with a device ID, stop must come from the same device
+        this.app.get('/api/spin/stop', (req, res) => {
             if (this.wheelState.status !== 'spinning') {
                 return res.status(409).json({ error: 'Wheel is not spinning', status: this.wheelState.status });
+            }
+
+            const stopDeviceId = req.query.device !== undefined ? parseInt(req.query.device, 10) : null;
+
+            // Device-locking: if spin started with a device, stop must match
+            if (this.wheelState.deviceId !== null && stopDeviceId !== this.wheelState.deviceId) {
+                return res.status(403).json({
+                    error: 'Only the device that started the spin can stop it',
+                    requiredDeviceId: this.wheelState.deviceId,
+                    attemptedDeviceId: stopDeviceId
+                });
             }
 
             clearTimeout(this.wheelState.autoStopTimer);
             this.wheelState.autoStopTimer = null;
             this.wheelState.status = 'stopping';
 
-            res.json({ status: 'stopping', fieldIndex: this.wheelState.selectedFieldIndex });
+            res.json({
+                status: 'stopping',
+                fieldIndex: this.wheelState.selectedFieldIndex,
+                stopDeviceId: Number.isFinite(stopDeviceId) ? stopDeviceId : null
+            });
         });
 
         // Complete result display – browser calls this after showing result for 7 s
@@ -171,16 +192,17 @@ class ApiServer {
             this.wheelState.status = 'idle';
             this.wheelState.selectedFieldIndex = null;
             this.wheelState.spinStartedAt = null;
+            this.wheelState.deviceId = null;
             res.json({ status: 'idle' });
         });
 
         // ── HTML Panel Routes ─────────────────────────────────────────────────
 
-        this.app.get('/', (req, res) => {
+        this.app.get('/', (_req, res) => {
             res.sendFile(path.join(__dirname, '..', '..', 'public', 'index.html'));
         });
 
-        this.app.get('/control', (req, res) => {
+        this.app.get('/control', (_req, res) => {
             res.sendFile(path.join(__dirname, '..', '..', 'public', 'control.html'));
         });
     }

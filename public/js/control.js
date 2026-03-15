@@ -130,7 +130,7 @@ class ControlPanel {
                 const tsDate = new Date(startTime + ((i + 1) * timeStep));
                 const timestampStr = TimeUtils.getISOString(tsDate);
 
-                const url = `/log?counter1=${c1}&counter2=${c2}&counter3=${c3}&category=${cat}&timestamp=${encodeURIComponent(timestampStr)}`;
+                const url = `/log?Bier=${c1}&Cocktail=${c2}&Shot=${c3}&category=${cat}&timestamp=${encodeURIComponent(timestampStr)}`;
                 fetch(url).then(r => { if (r.ok) successCount++; });
             }
 

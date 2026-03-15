@@ -13,7 +13,8 @@ describe('AppConfig', () => {
         const validNames = AppConfig.getValidCategoryNames();
         expect(validNames instanceof Set).toBe(true);
         expect(validNames.size).toBeGreaterThan(0);
-        expect(validNames.has('alpha')).toBe(true);
+        expect(validNames.has('ET')).toBe(true);
+        expect(validNames.has('I')).toBe(true);
     });
 
     it('should cache categories and not read file again', () => {

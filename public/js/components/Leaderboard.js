@@ -12,7 +12,7 @@ export class Leaderboard extends UIComponent {
     render() {
         const state = this.store.getState();
         const sorted = [...state.categories]
-            .map(c => ({ name: c.name, color: c.color, total: state.totals[c.name] || 0 }))
+            .map(c => ({ name: c.name, displayName: c.displayName || c.name, color: c.color, total: state.totals[c.name] || 0 }))
             .sort((a, b) => b.total - a.total);
 
         if (sorted.length === 0 || sorted.every(s => s.total === 0)) {
@@ -32,7 +32,7 @@ export class Leaderboard extends UIComponent {
               <div class="lb-item">
                 <span class="lb-rank ${rankClass}">${rankLabel}</span>
                 <span class="lb-swatch" style="background:${item.color}; color:${item.color};"></span>
-                <span class="lb-name">${item.name}</span>
+                <span class="lb-name">${item.displayName}</span>
                 <span class="lb-score">${item.total.toFixed(1)}</span>
               </div>`;
         }).join('');

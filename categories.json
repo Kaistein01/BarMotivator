@@ -1,50 +1,62 @@
 [
   {
-    "name": "alpha",
+    "name": "ET",
+    "displayName": "Elektrotechnik",
     "color": "#E6194B"
   },
   {
-    "name": "beta",
+    "name": "I",
+    "displayName": "Informatik",
     "color": "#3CB44B"
   },
   {
-    "name": "gamma",
+    "name": "M-I",
+    "displayName": "Maschienentechnik",
     "color": "#FFE119"
   },
   {
-    "name": "delta",
+    "name": "ABLR",
+    "displayName": "Arch, Bau, Land., Raum",
     "color": "#4363D8"
   },
   {
-    "name": "epsilon",
+    "name": "EEU",
+    "displayName": "Ern. Energie und Umwelttech.",
     "color": "#F58231"
   },
   {
-    "name": "zeta",
+    "name": "WING-F",
+    "displayName": "Wirtschaftsing. / -informatik",
     "color": "#911EB4"
   },
   {
-    "name": "eta",
+    "name": "ETH",
+    "displayName": "ETH Zurich",
     "color": "#46F0F0"
   },
   {
-    "name": "theta",
+    "name": "HSG",
+    "displayName": "Uni St. Gallen",
     "color": "#F032E6"
   },
   {
-    "name": "iota",
+    "name": "UZH-PH",
+    "displayName": "Uni Zürich / PH",
     "color": "#BCF60C"
   },
   {
-    "name": "kappa",
+    "name": "Buezer",
+    "displayName": "Büezer",
     "color": "#FABED4"
   },
   {
-    "name": "lambda",
+    "name": "Soz-Ges",
+    "displayName": "Sozial / Gesundheit",
     "color": "#008080"
   },
   {
-    "name": "mu",
+    "name": "MSE",
+    "displayName": "Master",
     "color": "#E6BEFF"
   }
 ]

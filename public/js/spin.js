@@ -2,32 +2,56 @@ const POLL_INTERVAL_MS = 200;
 const SPIN_VELOCITY = 6 * Math.PI; // rad/s  (~3 rotations/sec)
 const AUTO_STOP_SECONDS = 10;
 const RESULT_DURATION_MS = 7000;
+const INTRO_DURATION_MS = 700;
+const OUTRO_DURATION_MS = 450;
+
+// Easing helpers
+function easeOutElastic(t) {
+    if (t === 0) return 0;
+    if (t === 1) return 1;
+    const c4 = (2 * Math.PI) / 2.5;
+    return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+}
+
+function easeInCubic(t) {
+    return t * t * t;
+}
 
 class WheelApp {
     constructor() {
+        this.overlay = document.getElementById('wheel-overlay');
         this.canvas = document.getElementById('wheel-canvas');
         this.ctx = this.canvas.getContext('2d');
-        this.resultOverlay = document.getElementById('result-overlay');
-        this.resultLabel = document.getElementById('result-label');
+        this.resultOverlay = document.getElementById('spin-result-overlay');
+        this.resultLabel = document.getElementById('spin-result-label');
+        this.deviceBadge = document.getElementById('spin-device-badge');
+        this.deviceIdEl = document.getElementById('spin-device-id');
 
         // Wheel config
         this.fields = [];
 
         // Animation state
-        this.state = 'idle'; // 'idle' | 'spinning' | 'stopping' | 'result'
-        this.wheelAngle = 0; // radians, always increasing (clockwise)
+        this.state = 'idle'; // 'idle' | 'spinning' | 'stopping'
+        this.wheelAngle = 0;
         this.lastFrameTime = null;
 
         // Stopping phase
         this.stopStartAngle = 0;
         this.stopTotalAngle = 0;
         this.stopDuration = 0; // ms
-        this.stopStartTime = 0; // performance.now()
+        this.stopStartTime = 0;
         this.stopFieldIndex = -1;
         this.resultShown = false;
 
-        // Countdown (tracks when spinning started, synced with server)
-        this.spinStartedAt = null; // server-provided ms timestamp
+        // Countdown (synced to server's spinStartedAt)
+        this.spinStartedAt = null;
+
+        // Device
+        this.deviceId = null;
+
+        // Overlay fly-in / fly-out
+        this.introStartTime = null;
+        this.outroStartTime = null;
 
         // Fireworks
         this.particles = [];
@@ -76,6 +100,45 @@ class WheelApp {
         this.radius = Math.min(w, h) * 0.40;
     }
 
+    // ─── Overlay management ───────────────────────────────────────────────────
+
+    showOverlay() {
+        this.overlay.classList.add('active');
+        this.introStartTime = performance.now();
+        this.outroStartTime = null;
+
+        // Update device badge with the device ID from server state
+        if (this.deviceId !== null) {
+            this.deviceIdEl.textContent = this.deviceId;
+        }
+    }
+
+    hideOverlay() {
+        this.outroStartTime = performance.now();
+        this.introStartTime = null;
+
+        setTimeout(() => {
+            this.overlay.classList.remove('active');
+            this.outroStartTime = null;
+            this.deviceId = null;
+        }, OUTRO_DURATION_MS + 60);
+    }
+
+    // Returns the current scale multiplier for the wheel (for fly-in/out animation)
+    getWheelScale(timestamp) {
+        if (this.introStartTime !== null) {
+            const t = Math.min((timestamp - this.introStartTime) / INTRO_DURATION_MS, 1);
+            const scale = easeOutElastic(t);
+            if (t >= 1) this.introStartTime = null;
+            return Math.max(0, scale);
+        }
+        if (this.outroStartTime !== null) {
+            const t = Math.min((timestamp - this.outroStartTime) / OUTRO_DURATION_MS, 1);
+            return Math.max(0, 1 - easeInCubic(t));
+        }
+        return 1;
+    }
+
     // ─── Polling ──────────────────────────────────────────────────────────────
 
     schedulePoll() {
@@ -94,19 +157,22 @@ class WheelApp {
         } catch (_) { /* network error, ignore */ }
     }
 
-    handleServerState({ status, selectedFieldIndex, spinStartedAt }) {
-        // Don't react while animating stop or showing result
-        if (this.state === 'stopping' || this.state === 'result') return;
+    handleServerState({ status, selectedFieldIndex, spinStartedAt, deviceId }) {
+        // Block state changes while decelerating or during result display
+        if (this.state === 'stopping') return;
 
         if (status === 'spinning' && this.state === 'idle') {
             this.state = 'spinning';
             this.spinStartedAt = spinStartedAt;
+            this.deviceId = deviceId;
+            this.showOverlay();
         } else if (status === 'stopping' && this.state === 'spinning') {
             this.beginStopping(selectedFieldIndex);
         } else if (status === 'idle' && this.state === 'spinning') {
-            // Server reset while we were still spinning (edge case)
+            // Server reset unexpectedly (edge case)
             this.state = 'idle';
             this.spinStartedAt = null;
+            this.hideOverlay();
         }
     }
 
@@ -117,21 +183,15 @@ class WheelApp {
         const segAngle = (2 * Math.PI) / n;
 
         // Target: wheelAngle ≡ -(fieldIndex + 0.5) * segAngle  (mod 2π)
-        // so that segment center aligns with the top pointer
         const targetMod = ((-(fieldIndex + 0.5) * segAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
         const currentMod = ((this.wheelAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
 
         let delta = (targetMod - currentMod + 2 * Math.PI) % (2 * Math.PI);
-        if (delta < 0.01) delta = 2 * Math.PI; // always move forward at least one turn
+        if (delta < 0.01) delta = 2 * Math.PI;
 
-        // Using cubic ease-out: velocity at t=0 equals spinVelocity
-        // v(0) = 3 * totalAngle / durationSecs = SPIN_VELOCITY
-        // → durationSecs = 3 * totalAngle / SPIN_VELOCITY
-        // We aim for 5–7 s of deceleration → target total angle ≈ SPIN_VELOCITY * desiredT / 3
+        // Cubic ease-out: initial velocity = spinVelocity, duration = 3*total/velocity
         const desiredT = 5 + Math.random() * 2;
         const minTotalAngle = SPIN_VELOCITY * desiredT / 3;
-
-        // Round up delta by full rotations so totalAngle ≥ minTotalAngle
         const extraRotations = Math.max(0, Math.ceil((minTotalAngle - delta) / (2 * Math.PI)));
         const totalAngle = delta + extraRotations * 2 * Math.PI;
         const durationMs = (3 * totalAngle / SPIN_VELOCITY) * 1000;
@@ -167,7 +227,6 @@ class WheelApp {
             }
         }
 
-        // Update fireworks particles
         if (this.fireworksActive || this.particles.length > 0) {
             this.updateParticles(dt);
         }
@@ -178,15 +237,28 @@ class WheelApp {
     // ─── Drawing ──────────────────────────────────────────────────────────────
 
     draw(timestamp) {
-        const { ctx, w, h } = this;
+        const { ctx, w, h, cx, cy } = this;
         ctx.clearRect(0, 0, w, h);
 
-        this.drawBackground();
+        // Only draw if overlay is active or animating (intro/outro)
+        const isVisible = this.overlay.classList.contains('active')
+            || this.introStartTime !== null
+            || this.outroStartTime !== null;
 
-        if (this.fields.length > 0) {
-            this.drawWheel(timestamp);
-            this.drawPointer();
-        }
+        if (!isVisible || this.fields.length === 0) return;
+
+        const scale = this.getWheelScale(timestamp);
+
+        // Apply scale transform from center so the wheel flies in/out from center
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.scale(scale, scale);
+        ctx.translate(-cx, -cy);
+
+        this.drawWheel(timestamp);
+        this.drawPointer();
+
+        ctx.restore();
 
         if (this.state === 'spinning' && this.spinStartedAt !== null) {
             this.drawCountdown();
@@ -195,17 +267,6 @@ class WheelApp {
         if (this.particles.length > 0) {
             this.drawParticles();
         }
-    }
-
-    drawBackground() {
-        const { ctx, cx, cy, w, h } = this;
-        const r = Math.max(w, h) * 0.85;
-        const grad = ctx.createRadialGradient(cx, cy * 0.85, 0, cx, cy, r);
-        grad.addColorStop(0, '#16357a');
-        grad.addColorStop(0.55, '#0c1e50');
-        grad.addColorStop(1, '#050d1f');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, w, h);
     }
 
     drawWheel(timestamp) {
@@ -217,7 +278,7 @@ class WheelApp {
         ctx.save();
         ctx.translate(cx, cy);
 
-        // Outer glow behind wheel
+        // Outer glow
         const glowGrad = ctx.createRadialGradient(0, 0, radius * 0.7, 0, 0, radius + rimW + 20);
         glowGrad.addColorStop(0, 'rgba(80,140,255,0)');
         glowGrad.addColorStop(0.6, 'rgba(80,140,255,0.08)');
@@ -227,7 +288,6 @@ class WheelApp {
         ctx.fillStyle = glowGrad;
         ctx.fill();
 
-        // Rotate for spinning animation
         ctx.rotate(wheelAngle);
 
         // ── Segments ──────────────────────────────────────────────────────────
@@ -243,7 +303,7 @@ class WheelApp {
             ctx.fillStyle = field.color;
             ctx.fill();
 
-            // Subtle inner highlight to give depth
+            // Inner highlight for depth
             const lightGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
             lightGrad.addColorStop(0, 'rgba(255,255,255,0.18)');
             lightGrad.addColorStop(0.55, 'rgba(255,255,255,0.04)');
@@ -255,7 +315,7 @@ class WheelApp {
             ctx.fillStyle = lightGrad;
             ctx.fill();
 
-            // Separator line
+            // Separator
             ctx.beginPath();
             ctx.moveTo(0, 0);
             ctx.arc(0, 0, radius, startA, endA);
@@ -264,7 +324,7 @@ class WheelApp {
             ctx.lineWidth = 1.5;
             ctx.stroke();
 
-            // ── Label ─────────────────────────────────────────────────────────
+            // Label
             ctx.save();
             ctx.rotate(startA + segAngle / 2);
             const fontSize = Math.max(13, Math.min(22, radius * 0.086));
@@ -279,29 +339,25 @@ class WheelApp {
         }
 
         // ── Rim ───────────────────────────────────────────────────────────────
-
-        // Inner gold ring
         ctx.beginPath();
         ctx.arc(0, 0, radius + 3, 0, 2 * Math.PI);
         ctx.strokeStyle = '#c8960c';
         ctx.lineWidth = 4;
         ctx.stroke();
 
-        // Red rim body
         ctx.beginPath();
         ctx.arc(0, 0, radius + rimW / 2 + 4, 0, 2 * Math.PI);
         ctx.strokeStyle = '#b91c1c';
         ctx.lineWidth = rimW;
         ctx.stroke();
 
-        // Outer gold ring
         ctx.beginPath();
         ctx.arc(0, 0, radius + rimW + 8, 0, 2 * Math.PI);
         ctx.strokeStyle = '#c8960c';
         ctx.lineWidth = 4;
         ctx.stroke();
 
-        // ── Light bulbs on rim ────────────────────────────────────────────────
+        // ── Light bulbs ───────────────────────────────────────────────────────
         const numLights = n * 2 + 2;
         const lightDist = radius + rimW / 2 + 4;
         const lightR = Math.max(5, rimW * 0.28);
@@ -315,7 +371,6 @@ class WheelApp {
 
             ctx.beginPath();
             ctx.arc(lx, ly, lightR, 0, 2 * Math.PI);
-
             if (lit) {
                 ctx.save();
                 ctx.shadowColor = '#ffe033';
@@ -355,20 +410,17 @@ class WheelApp {
 
         ctx.save();
         ctx.translate(cx, tipY);
-
-        // Drop shadow
         ctx.shadowColor = 'rgba(0,0,0,0.6)';
         ctx.shadowBlur = 10;
         ctx.shadowOffsetY = 3;
 
-        // Gradient fill
         const grad = ctx.createLinearGradient(0, -pH, 0, 0);
         grad.addColorStop(0, '#fffde7');
         grad.addColorStop(0.45, '#ffd700');
         grad.addColorStop(1, '#e8b800');
 
         ctx.beginPath();
-        ctx.moveTo(0, 0);          // tip pointing down into wheel
+        ctx.moveTo(0, 0);
         ctx.lineTo(-pW, -pH);
         ctx.lineTo(pW, -pH);
         ctx.closePath();
@@ -392,36 +444,30 @@ class WheelApp {
 
         const x = 52, y = 52, r = 36;
 
-        // Background
         ctx.save();
         ctx.beginPath();
         ctx.arc(x, y, r, 0, 2 * Math.PI);
         ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
         ctx.fill();
 
-        // Track ring
         ctx.beginPath();
         ctx.arc(x, y, r - 5, 0, 2 * Math.PI);
         ctx.strokeStyle = 'rgba(255,255,255,0.15)';
         ctx.lineWidth = 7;
         ctx.stroke();
 
-        // Progress arc (shrinks as time runs out)
-        const arcColor = remaining > 4 ? '#48bb78' : '#fc8181';
         ctx.beginPath();
         ctx.arc(x, y, r - 5, -Math.PI / 2, -Math.PI / 2 + fraction * 2 * Math.PI);
-        ctx.strokeStyle = arcColor;
+        ctx.strokeStyle = remaining > 4 ? '#48bb78' : '#fc8181';
         ctx.lineWidth = 7;
         ctx.lineCap = 'round';
         ctx.stroke();
 
-        // Number
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 21px Inter, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(Math.ceil(remaining), x, y);
-
         ctx.restore();
     }
 
@@ -432,7 +478,7 @@ class WheelApp {
         for (const p of this.particles) {
             p.x += p.vx * dt;
             p.y += p.vy * dt;
-            p.vy += 220 * dt; // gravity (px/s²)
+            p.vy += 220 * dt;
             p.life -= p.decay * dt;
         }
     }
@@ -464,7 +510,7 @@ class WheelApp {
         const count = 65 + Math.floor(Math.random() * 55);
         for (let i = 0; i < count; i++) {
             const angle = (i / count) * 2 * Math.PI + Math.random() * 0.25;
-            const speed = 120 + Math.random() * 280; // px/s
+            const speed = 120 + Math.random() * 280;
             const color = palette[Math.floor(Math.random() * palette.length)];
             this.particles.push({
                 x, y,
@@ -473,7 +519,7 @@ class WheelApp {
                 color,
                 size: 2.5 + Math.random() * 2.5,
                 life: 1,
-                decay: 0.38 + Math.random() * 0.32 // ~1.5–2.5 s lifetime
+                decay: 0.38 + Math.random() * 0.32
             });
         }
     }
@@ -518,8 +564,14 @@ class WheelApp {
             this.state = 'idle';
             this.spinStartedAt = null;
             fetch('/api/spin/complete').catch(() => {});
+            this.hideOverlay();
         }, RESULT_DURATION_MS);
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => new WheelApp());
+document.addEventListener('DOMContentLoaded', () => {
+    // Only initialise if the wheel overlay elements are present on this page
+    if (document.getElementById('wheel-overlay')) {
+        new WheelApp();
+    }
+});
