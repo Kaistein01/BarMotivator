@@ -33,7 +33,6 @@ export class Leaderboard extends UIComponent {
                 <span class="lb-rank ${rankClass}">${rankLabel}</span>
                 <span class="lb-swatch" style="background:${item.color}; color:${item.color};"></span>
                 <span class="lb-name">${item.displayName}</span>
-                <span class="lb-score">${item.total.toFixed(1)}</span>
               </div>`;
         }).join('');
     }

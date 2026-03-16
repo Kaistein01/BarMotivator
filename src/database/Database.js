@@ -5,7 +5,7 @@ class Database {
     constructor(dbFilename = 'logs.db') {
         this.dbPath = path.join(__dirname, '..', '..', dbFilename);
         this.db = new sqlite3.Database(this.dbPath);
-        this.weights = { c1: 1.0, c2: 1.5, c3: 2.0 };
+        this.weights = { bier: 1.0, cocktail: 2.0, shot: 1.5 };
     }
 
     async init() {
@@ -31,7 +31,7 @@ class Database {
 
     async insertEntry(timestamp, category, c1, c2, c3) {
         return new Promise((resolve, reject) => {
-            const weightedSum = c1 * this.weights.c1 + c2 * this.weights.c2 + c3 * this.weights.c3;
+            const weightedSum = c1 * this.weights.bier + c2 * this.weights.cocktail + c3 * this.weights.shot;
             this.db.run(
                 `INSERT INTO entries (timestamp, category, Bier, Cocktail, Shot, weighted_sum) VALUES (?, ?, ?, ?, ?, ?)`,
                 [timestamp, category, c1, c2, c3, weightedSum],

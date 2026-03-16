@@ -11,32 +11,32 @@
   },
   {
     "name": "M-I",
-    "displayName": "Maschienentechnik",
+    "displayName": "M|I (Maschienentechnik Innovation)",
     "color": "#FFE119"
   },
   {
     "name": "ABLR",
-    "displayName": "Arch, Bau, Land., Raum",
+    "displayName": "ABLR (Architektur, Bau, Landschaft, Raum)",
     "color": "#4363D8"
   },
   {
     "name": "EEU",
-    "displayName": "Ern. Energie und Umwelttech.",
+    "displayName": "EEU (Erneuerbare Energien und Umwelt)",
     "color": "#F58231"
   },
   {
     "name": "WING-F",
-    "displayName": "Wirtschaftsing. / -informatik",
+    "displayName": "Wirtschaftsingenieur / -informatik",
     "color": "#911EB4"
   },
   {
     "name": "ETH",
-    "displayName": "ETH Zurich",
+    "displayName": "ETH",
     "color": "#46F0F0"
   },
   {
     "name": "HSG",
-    "displayName": "Uni St. Gallen",
+    "displayName": "HSG (Uni St. Gallen)",
     "color": "#F032E6"
   },
   {
@@ -51,7 +51,7 @@
   },
   {
     "name": "Soz-Ges",
-    "displayName": "Sozial / Gesundheit",
+    "displayName": "Sozial / Gesundheit / Psychologie",
     "color": "#008080"
   },
   {
