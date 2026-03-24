@@ -1,62 +1,62 @@
 {
   "fields": [
     {
-      "label": "Bier",
-      "color": "#e53e3e",
+      "label": "Signature Drink",
+      "color": "#ff4444",
       "probability": 0.03,
       "fireworks": true
     },
     {
-      "label": "Red Bull",
-      "color": "#dd6b20",
+      "label": "2 Bier",
+      "color": "#ff8800",
       "probability": 0.05,
       "fireworks": true
     },
     {
       "label": "Softdrink",
-      "color": "#2b6cb0",
+      "color": "#44aaff",
       "probability": 0.07,
       "fireworks": true
     },
     {
-      "label": "Putzschicht",
-      "color": "#d69e2e",
+      "label": "Signature Drink",
+      "color": "#ffee00",
       "probability": 0.08,
       "fireworks": true
     },
     {
-      "label": "Nichts",
-      "color": "#805ad5",
+      "label": "Applaus",
+      "color": "#cc44ff",
       "probability": 0.10,
       "fireworks": true
     },
     {
-      "label": "Shot",
-      "color": "#3182ce",
+      "label": "Mate",
+      "color": "#44ffcc",
       "probability": 0.12,
       "fireworks": true
     },
     {
-      "label": "Händedruck",
-      "color": "#38a169",
+      "label": "Bier",
+      "color": "#44ff88",
       "probability": 0.15,
       "fireworks": true
     },
     {
-      "label": "Zitronenscheibe",
-      "color": "#319795",
+      "label": "2 Shots",
+      "color": "#ff44cc",
       "probability": 0.15,
       "fireworks": true
     },
     {
-      "label": "Papierschirm",
-      "color": "#2f855a",
+      "label": "Mocktail",
+      "color": "#ff6644",
       "probability": 0.15,
       "fireworks": true
     },
     {
       "label": "Long Drink",
-      "color": "#9b2c2c",
+      "color": "#88ff44",
       "probability": 0.10,
       "fireworks": true
     }

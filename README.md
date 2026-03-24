@@ -22,6 +22,7 @@ A real-time dashboard and timeline charting application built with Node.js, Expr
 - **Live Dashboard**: [http://localhost:3000](http://localhost:3000) – Real-time timeline chart and leaderboard
 - **Control Panel**: [http://localhost:3000/control](http://localhost:3000/control) – Debug tools and data management
 - **Fortune Wheel**: [http://localhost:3000/spin](http://localhost:3000/spin) – Standalone fortune wheel (also integrated into dashboard)
+- **Super Spin**: [http://localhost:3000/superspin](http://localhost:3000/superspin) – Slot-machine style single-column spinner
 
 ## Directory Architecture
 The platform is built on fully-modular, DRY principles across both the Node.js backend and the browser frontend:
@@ -30,6 +31,7 @@ The platform is built on fully-modular, DRY principles across both the Node.js b
 BarMotivator/
 ├── server.js                      # Entry point, orchestrates backend modules
 ├── wheel-config.json              # Fortune wheel field definitions & probabilities
+├── superspin-config.json          # Super Spin field definitions & probabilities
 ├── categories.json                # Data category definitions
 ├── package.json                   # Dependencies (express, socket.io, sqlite3)
 ├── src/                           # Backend Classes
@@ -42,11 +44,13 @@ BarMotivator/
 │   ├── index.html                 # Live Dashboard (with integrated wheel overlay)
 │   ├── control.html               # Control Panel
 │   ├── spin.html                  # Standalone Fortune Wheel page
+│   ├── superspin.html             # Super Spin page (slot machine)
 │   ├── style.css                  # Shared styles (dashboard + wheel)
 │   └── js/                        # Frontend ES6 Modules
 │       ├── main.js                # Dashboard controller
 │       ├── control.js             # Control Panel controller
 │       ├── spin.js                # Fortune wheel app (overlay mode)
+│       ├── superspin.js           # Super Spin app (slot machine)
 │       ├── core/                  # Base classes (Store, UIComponent)
 │       ├── components/            # UI subclasses (TimelineChart, Leaderboard)
 │       └── network/               # SocketClient, WebRTCManager
@@ -263,6 +267,123 @@ Serves the fortune wheel as a standalone full-screen page (also available as ove
 **Endpoint:** `GET /spin`
 
 **Returns:** HTML page
+
+### 13. Super Spin (Standalone)
+
+Serves the slot-machine spinner as a standalone full-screen page.
+
+**Endpoint:** `GET /superspin`
+
+**Returns:** HTML page
+
+---
+
+## Super Spin API
+
+The Super Spin is a slot-machine style single-column spinner. It has a four-step lifecycle controlled via GET endpoints.
+
+**State machine:** `idle` → `enabled` → `spinning` → `stopping` → *(showdown)* → `idle`
+
+The purpose is for the fog screen:
+
+1. Press Buzzer
+2. engage fogscreen
+3. enable spinner
+4. Press Buzzer to stop spinner
+5. Showdown
+6. Clear spinner
+7. Clear Fog
+
+### Super Spin: Enable
+
+Makes the reel appear on screen. Winning field is selected at this point.
+Only allowed when status is `idle`.
+
+**Endpoint:** `GET /api/superspin/enable`
+
+**Query Parameters:**
+- `device` (integer, optional) – Device ID (enables device-locking for start/stop).
+
+**Success Response (HTTP 200):**
+```json
+{ "status": "enabled", "fieldIndex": 4, "deviceId": null }
+```
+
+### Super Spin: Start
+
+Starts the reel scrolling. Only allowed when status is `enabled`.
+
+**Endpoint:** `GET /api/superspin/start`
+
+**Query Parameters:**
+- `device` (integer, optional) – Must match the device that called enable (if device-locking is active).
+
+**Success Response (HTTP 200):**
+```json
+{ "status": "started", "fieldIndex": 4, "deviceId": null }
+```
+
+### Super Spin: Stop
+
+Decelerates the reel to the pre-selected winning field. Only allowed when status is `spinning`.
+A 10-second auto-stop also triggers automatically if this endpoint is not called.
+
+**Endpoint:** `GET /api/superspin/stop`
+
+**Query Parameters:**
+- `device` (integer, optional) – Must match the device that called enable (if device-locking is active).
+
+**Success Response (HTTP 200):**
+```json
+{ "status": "stopping", "fieldIndex": 4, "stopDeviceId": null }
+```
+
+### Super Spin: State
+
+Poll this endpoint to track current status. Clients poll every ~200ms.
+
+**Endpoint:** `GET /api/superspin/state`
+
+**Returns:**
+```json
+{
+  "status": "idle | enabled | spinning | stopping",
+  "selectedFieldIndex": null | 0-9,
+  "spinStartedAt": null | <unix-ms-timestamp>,
+  "deviceId": null | <integer>
+}
+```
+
+### Super Spin: Complete
+
+Called automatically by the browser after the 7-second result display. Resets to `idle`.
+
+**Endpoint:** `GET /api/superspin/complete`
+
+**Returns:** `{ "status": "idle" }`
+
+### Super Spin: Config
+
+Returns field definitions for the slot machine.
+
+**Endpoint:** `GET /api/superspin/config`
+
+**Returns:** JSON with `fields` array (same structure as `/api/spin/config`).
+
+### Example Flow
+```bash
+# 1. Show the reel
+curl "http://localhost:3000/api/superspin/enable"
+
+# 2. Start spinning
+curl "http://localhost:3000/api/superspin/start"
+
+# 3. Stop (at any time; auto-stops after 10s if not called)
+curl "http://localhost:3000/api/superspin/stop"
+# → browser decelerates, shows winner, then auto-calls /complete
+```
+
+---
 
 ## Fortune Wheel Configuration
 

@@ -18,12 +18,25 @@ class ApiServer {
         const wheelConfigPath = path.join(__dirname, '..', '..', 'wheel-config.json');
         this.wheelFields = JSON.parse(fs.readFileSync(wheelConfigPath, 'utf-8')).fields;
 
+        // Load superspin configuration
+        const superspinConfigPath = path.join(__dirname, '..', '..', 'superspin-config.json');
+        this.superspinFields = JSON.parse(fs.readFileSync(superspinConfigPath, 'utf-8')).fields;
+
         // Wheel spin state machine
         this.wheelState = {
             status: 'idle',        // 'idle' | 'spinning' | 'stopping'
             selectedFieldIndex: null,
             spinStartedAt: null,   // Date.now() when spin started
             deviceId: null,        // integer device id that triggered the spin
+            autoStopTimer: null
+        };
+
+        // Superspin state machine
+        this.superspinState = {
+            status: 'idle',        // 'idle' | 'enabled' | 'spinning' | 'stopping'
+            selectedFieldIndex: null,
+            spinStartedAt: null,
+            deviceId: null,
             autoStopTimer: null
         };
 
@@ -196,6 +209,103 @@ class ApiServer {
             res.json({ status: 'idle' });
         });
 
+        // ── Super Spin Routes ─────────────────────────────────────────────────
+
+        // Serve superspin page
+        this.app.get('/superspin', (_req, res) => {
+            res.sendFile(path.join(__dirname, '..', '..', 'public', 'superspin.html'));
+        });
+
+        // Superspin config
+        this.app.get('/api/superspin/config', (_req, res) => {
+            res.json({ fields: this.superspinFields });
+        });
+
+        // Current superspin state (polled by browser)
+        this.app.get('/api/superspin/state', (_req, res) => {
+            const { status, selectedFieldIndex, spinStartedAt, deviceId } = this.superspinState;
+            res.json({ status, selectedFieldIndex, spinStartedAt, deviceId });
+        });
+
+        // Enable superspin – makes the reel appear on screen (idle → enabled)
+        this.app.get('/api/superspin/enable', (req, res) => {
+            if (this.superspinState.status !== 'idle') {
+                return res.status(409).json({ error: 'Superspin is not idle', status: this.superspinState.status });
+            }
+
+            const deviceId = req.query.device !== undefined ? parseInt(req.query.device, 10) : null;
+            // Pre-select the winning field now so it is fixed before spinning starts
+            const fieldIndex = this._selectWeightedFieldFrom(this.superspinFields);
+            this.superspinState.status = 'enabled';
+            this.superspinState.selectedFieldIndex = fieldIndex;
+            this.superspinState.spinStartedAt = null;
+            this.superspinState.deviceId = Number.isFinite(deviceId) ? deviceId : null;
+
+            res.json({ status: 'enabled', fieldIndex, deviceId: this.superspinState.deviceId });
+        });
+
+        // Start superspin – only when enabled (reel must be visible first)
+        this.app.get('/api/superspin/start', (req, res) => {
+            if (this.superspinState.status !== 'enabled') {
+                return res.status(409).json({ error: 'Superspin is not enabled', status: this.superspinState.status });
+            }
+
+            const deviceId = req.query.device !== undefined ? parseInt(req.query.device, 10) : null;
+            if (this.superspinState.deviceId !== null && Number.isFinite(deviceId) && deviceId !== this.superspinState.deviceId) {
+                return res.status(403).json({ error: 'Device mismatch', requiredDeviceId: this.superspinState.deviceId });
+            }
+
+            this.superspinState.status = 'spinning';
+            this.superspinState.spinStartedAt = Date.now();
+
+            const AUTO_STOP_MS = 10000;
+            this.superspinState.autoStopTimer = setTimeout(() => {
+                if (this.superspinState.status === 'spinning') {
+                    this.superspinState.status = 'stopping';
+                }
+            }, AUTO_STOP_MS);
+
+            res.json({ status: 'started', fieldIndex: this.superspinState.selectedFieldIndex, deviceId: this.superspinState.deviceId });
+        });
+
+        // Stop superspin – only while spinning
+        this.app.get('/api/superspin/stop', (req, res) => {
+            if (this.superspinState.status !== 'spinning') {
+                return res.status(409).json({ error: 'Superspin is not spinning', status: this.superspinState.status });
+            }
+
+            const stopDeviceId = req.query.device !== undefined ? parseInt(req.query.device, 10) : null;
+
+            if (this.superspinState.deviceId !== null && stopDeviceId !== this.superspinState.deviceId) {
+                return res.status(403).json({
+                    error: 'Only the device that started the superspin can stop it',
+                    requiredDeviceId: this.superspinState.deviceId,
+                    attemptedDeviceId: stopDeviceId
+                });
+            }
+
+            clearTimeout(this.superspinState.autoStopTimer);
+            this.superspinState.autoStopTimer = null;
+            this.superspinState.status = 'stopping';
+
+            res.json({
+                status: 'stopping',
+                fieldIndex: this.superspinState.selectedFieldIndex,
+                stopDeviceId: Number.isFinite(stopDeviceId) ? stopDeviceId : null
+            });
+        });
+
+        // Complete superspin result display
+        this.app.get('/api/superspin/complete', (_req, res) => {
+            clearTimeout(this.superspinState.autoStopTimer);
+            this.superspinState.autoStopTimer = null;
+            this.superspinState.status = 'idle';
+            this.superspinState.selectedFieldIndex = null;
+            this.superspinState.spinStartedAt = null;
+            this.superspinState.deviceId = null;
+            res.json({ status: 'idle' });
+        });
+
         // ── HTML Panel Routes ─────────────────────────────────────────────────
 
         this.app.get('/', (_req, res) => {
@@ -209,7 +319,11 @@ class ApiServer {
 
     /** Weighted random selection over wheel fields */
     _selectWeightedField() {
-        const fields = this.wheelFields;
+        return this._selectWeightedFieldFrom(this.wheelFields);
+    }
+
+    /** Weighted random selection from an arbitrary fields array */
+    _selectWeightedFieldFrom(fields) {
         const total = fields.reduce((sum, f) => sum + (f.probability || 0), 0);
         let r = Math.random() * total;
         for (let i = 0; i < fields.length; i++) {
