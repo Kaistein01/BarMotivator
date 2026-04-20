@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rattenfest 2026 – Screen 1</title>
+    <meta name="description" content="Real-time category leaderboard and timeline for Rattenfest 2026." />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+
+<body data-device="1">
+    <div id="app">
+        <!-- ── Left 66%: timeline chart ──────────────────────────────────── -->
+        <section class="panel" id="chart-panel" aria-label="Timeline chart">
+            <p class="panel-title">
+                <span class="live-dot" title="Live Connection (Socket.io/WebRTC)"></span>
+                Timeline
+            </p>
+            <div id="chart-wrapper">
+                <canvas id="timeline-chart" aria-label="Category timeline graph" role="img"></canvas>
+            </div>
+            <div id="webrtc-status" style="margin-top: 10px; font-size: 0.8rem; color: #888;">
+                Peers: <span id="peer-count">0</span> connected.
+            </div>
+        </section>
+
+        <!-- ── Right 33%: leaderboard ─────────────────────────────────────── -->
+        <section class="panel" id="leaderboard-panel" aria-label="Leaderboard">
+            <p class="panel-title">Rangliste</p>
+            <div id="leaderboard">
+                <div class="empty-state">
+                    <span>📡</span>
+                    <p>Loading entries...</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ── Fortune Wheel Overlay ─────────────────────────────────────────── -->
+    <div id="wheel-overlay">
+        <canvas id="wheel-canvas"></canvas>
+
+        <!-- Device badge (top right) -->
+        <div id="spin-device-badge">
+            <span class="badge-dot"></span>
+            Device #<span id="spin-device-id"></span>
+        </div>
+
+        <!-- Result overlay -->
+        <div id="spin-result-overlay">
+            <div id="spin-result-inner">
+                <div id="spin-result-won">Du gewinnst</div>
+                <div id="spin-result-label"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Superspin Overlay ──────────────────────────────────────────────── -->
+    <div id="superspin-overlay">
+        <canvas id="superspin-canvas"></canvas>
+
+        <div id="superspin-result-overlay">
+            <div id="superspin-result-inner">
+                <div id="superspin-result-won">Du gewinnst</div>
+                <div id="superspin-result-label"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="/js/main.js"></script>
+    <script type="module" src="/js/spin.js"></script>
+    <script type="module" src="/js/superspin.js"></script>
+</body>
+
+</html>

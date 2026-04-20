@@ -4,62 +4,53 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Rattenfest 2026 – Live Dashboard</title>
-    <meta name="description" content="Real-time category leaderboard and timeline for Rattenfest 2026." />
+    <title>Rattenfest 2026</title>
     <link rel="stylesheet" href="/style.css" />
-    <!-- socket.io for real-time signaling -->
-    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .launcher {
+            display: flex;
+            gap: 32px;
+        }
+
+        .launcher a {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 220px;
+            height: 220px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            color: var(--text);
+            font-size: 1.8rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-decoration: none;
+            transition: background 0.2s, box-shadow 0.2s, transform 0.15s;
+        }
+
+        .launcher a:hover {
+            background: var(--surface2);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+            transform: translateY(-3px);
+        }
+    </style>
 </head>
 
 <body>
-    <div id="app">
-        <!-- ── Left 66%: timeline chart ──────────────────────────────────── -->
-        <section class="panel" id="chart-panel" aria-label="Timeline chart">
-            <p class="panel-title">
-                <span class="live-dot" title="Live Connection (Socket.io/WebRTC)"></span>
-                Timeline
-            </p>
-            <div id="chart-wrapper">
-                <canvas id="timeline-chart" aria-label="Category timeline graph" role="img"></canvas>
-            </div>
-            <div id="webrtc-status" style="margin-top: 10px; font-size: 0.8rem; color: #888;">
-                Peers: <span id="peer-count">0</span> connected.
-            </div>
-        </section>
-
-        <!-- ── Right 33%: leaderboard ─────────────────────────────────────── -->
-        <section class="panel" id="leaderboard-panel" aria-label="Leaderboard">
-            <p class="panel-title">Rangliste</p>
-            <div id="leaderboard">
-                <!-- populated by app.js -->
-                <div class="empty-state">
-                    <span>📡</span>
-                    <p>Loading entries...</p>
-                </div>
-            </div>
-        </section>
+    <div class="launcher">
+        <a href="/screen1">Screen 1</a>
+        <a href="/screen2">Screen 2</a>
     </div>
-    <!-- ── Fortune Wheel Overlay ─────────────────────────────────────────── -->
-    <div id="wheel-overlay">
-        <canvas id="wheel-canvas"></canvas>
-
-        <!-- Device badge (top right) -->
-        <div id="spin-device-badge">
-            <span class="badge-dot"></span>
-            Device #<span id="spin-device-id"></span>
-        </div>
-
-        <!-- Result overlay -->
-        <div id="spin-result-overlay">
-            <div id="spin-result-inner">
-                <div id="spin-result-won">Du gewinnst</div>
-                <div id="spin-result-label"></div>
-            </div>
-        </div>
-    </div>
-
-    <script type="module" src="/js/main.js"></script>
-    <script type="module" src="/js/spin.js"></script>
 </body>
 
 </html>

@@ -3,61 +3,31 @@
     {
       "label": "Signature Drink",
       "color": "#ff4444",
-      "probability": 0.03,
+      "probability": 0.1,
       "fireworks": true
     },
     {
       "label": "2 Bier",
       "color": "#ff8800",
-      "probability": 0.05,
+      "probability": 0.2,
       "fireworks": true
     },
     {
-      "label": "Softdrink",
+      "label": "4 Shots",
       "color": "#44aaff",
-      "probability": 0.07,
-      "fireworks": true
-    },
-    {
-      "label": "Signature Drink",
-      "color": "#ffee00",
-      "probability": 0.08,
-      "fireworks": true
-    },
-    {
-      "label": "Applaus",
-      "color": "#cc44ff",
-      "probability": 0.10,
-      "fireworks": true
-    },
-    {
-      "label": "Mate",
-      "color": "#44ffcc",
-      "probability": 0.12,
-      "fireworks": true
-    },
-    {
-      "label": "Bier",
-      "color": "#44ff88",
-      "probability": 0.15,
-      "fireworks": true
-    },
-    {
-      "label": "2 Shots",
-      "color": "#ff44cc",
-      "probability": 0.15,
+      "probability": 0.3,
       "fireworks": true
     },
     {
       "label": "Mocktail",
-      "color": "#ff6644",
-      "probability": 0.15,
+      "color": "#ffee00",
+      "probability": 0.2,
       "fireworks": true
     },
     {
       "label": "Long Drink",
-      "color": "#88ff44",
-      "probability": 0.10,
+      "color": "#cc44ff",
+      "probability": 0.2,
       "fireworks": true
     }
   ]

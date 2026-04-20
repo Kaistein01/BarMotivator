@@ -27,6 +27,9 @@ class WheelApp {
         this.deviceBadge = document.getElementById('spin-device-badge');
         this.deviceIdEl = document.getElementById('spin-device-id');
 
+        // Page device ID – read from <body data-device="1">
+        this.pageDevice = parseInt(document.body.dataset.device, 10) || null;
+
         // Wheel config
         this.fields = [];
 
@@ -46,7 +49,7 @@ class WheelApp {
         // Countdown (synced to server's spinStartedAt)
         this.spinStartedAt = null;
 
-        // Device
+        // Device (from server state, matched against pageDevice)
         this.deviceId = null;
 
         // Overlay fly-in / fly-out
@@ -150,7 +153,8 @@ class WheelApp {
 
     async poll() {
         try {
-            const res = await fetch('/api/spin/state');
+            const url = this.pageDevice !== null ? `/api/spin/state?device=${this.pageDevice}` : '/api/spin/state';
+            const res = await fetch(url);
             if (!res.ok) return;
             const serverState = await res.json();
             this.handleServerState(serverState);
@@ -158,10 +162,18 @@ class WheelApp {
     }
 
     handleServerState({ status, selectedFieldIndex, spinStartedAt, deviceId }) {
+        // Only react to events for this page's device
+        if (this.pageDevice !== null && deviceId !== this.pageDevice) return;
+
         // Block state changes while decelerating or during result display
         if (this.state === 'stopping') return;
 
+        const lockKey = `__spinnerActive_${this.pageDevice}`;
+
         if (status === 'spinning' && this.state === 'idle') {
+            // Per-device mutual lock: if superspin is active on this device, don't proceed
+            if (window[lockKey] && window[lockKey] !== 'spin') return;
+            window[lockKey] = 'spin';
             this.state = 'spinning';
             this.spinStartedAt = spinStartedAt;
             this.deviceId = deviceId;
@@ -173,6 +185,7 @@ class WheelApp {
             this.state = 'idle';
             this.spinStartedAt = null;
             this.hideOverlay();
+            window[lockKey] = null;
         }
     }
 
@@ -563,7 +576,9 @@ class WheelApp {
             this.stopFireworks();
             this.state = 'idle';
             this.spinStartedAt = null;
-            fetch('/api/spin/complete').catch(() => {});
+            window[`__spinnerActive_${this.pageDevice}`] = null;
+            const completeUrl = this.pageDevice !== null ? `/api/spin/complete?device=${this.pageDevice}` : '/api/spin/complete';
+            fetch(completeUrl).catch(() => {});
             this.hideOverlay();
         }, RESULT_DURATION_MS);
     }

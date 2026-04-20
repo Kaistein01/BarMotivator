@@ -4,7 +4,7 @@ const VISIBLE_ITEMS = 5;          // how many items show in the reel at once
 const ITEM_HEIGHT_RATIO = 0.14;   // item height as fraction of canvas height
 const SPIN_SPEED = 18;            // items per second during full spin
 const STOP_DURATION_MS = 4000;    // deceleration time
-const REEL_FADEIN_MS = 600;       // ms to fade the reel in on enable
+const AUTO_STOP_SECONDS = 10;
 
 function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
@@ -12,6 +12,7 @@ class SuperSpinApp {
     constructor() {
         this.canvas      = document.getElementById('superspin-canvas');
         this.ctx         = this.canvas.getContext('2d');
+        this.overlay     = document.getElementById('superspin-overlay');
         this.resultOverlay = document.getElementById('superspin-result-overlay');
         this.resultLabel   = document.getElementById('superspin-result-label');
 
@@ -19,18 +20,19 @@ class SuperSpinApp {
 
         // State machine:
         //   'idle'     – completely black, nothing drawn
-        //   'enabled'  – reel fades in, sitting still
         //   'spinning' – reel scrolling at full speed
         //   'stopping' – reel decelerating to result
         //   'showdown' – reel gone, result overlay on pure black
         this.state = 'idle';
 
+        // Page device ID – read from <body data-device="1">
+        this.pageDevice = parseInt(document.body.dataset.device, 10) || null;
+
         // Reel scroll position (continuous item index)
         this.scrollOffset = 0;
         this.lastFrameTime = null;
 
-        // Reel fade-in
-        this.enabledAt = null;   // performance.now() timestamp
+        // Reel visibility
         this.reelAlpha = 0;
 
         // Stop phase
@@ -40,6 +42,9 @@ class SuperSpinApp {
         this.stopFieldIndex  = -1;
         this.resultShown     = false;
 
+        // Countdown
+        this.spinStartedAt = null;
+
         // Fireworks
         this.particles       = [];
         this.fireworksActive = false;
@@ -48,6 +53,10 @@ class SuperSpinApp {
         // Layout (CSS px)
         this.w = 0; this.h = 0;
         this.itemH = 0;
+
+        // Overlay management
+        this.introStartTime = null;
+        this.outroStartTime = null;
 
         this.init();
     }
@@ -93,25 +102,30 @@ class SuperSpinApp {
 
     async poll() {
         try {
-            const res = await fetch('/api/superspin/state');
+            const url = this.pageDevice !== null ? `/api/superspin/state?device=${this.pageDevice}` : '/api/superspin/state';
+            const res = await fetch(url);
             if (!res.ok) return;
             this.handleServerState(await res.json());
         } catch (_) {}
     }
 
-    handleServerState({ status, selectedFieldIndex }) {
+    handleServerState({ status, selectedFieldIndex, spinStartedAt, deviceId }) {
+        // Only react to events for this page's device
+        if (this.pageDevice !== null && deviceId !== this.pageDevice) return;
+
         // Never interrupt a deceleration or the showdown
         if (this.state === 'stopping' || this.state === 'showdown') return;
 
-        if (status === 'enabled' && this.state === 'idle') {
-            this.state = 'enabled';
-            this.enabledAt = performance.now();
-            this.reelAlpha = 0;
+        const lockKey = `__spinnerActive_${this.pageDevice}`;
 
-        } else if (status === 'spinning' && (this.state === 'enabled' || this.state === 'idle')) {
-            this.state = 'enabled';           // ensure reel is shown
-            this.reelAlpha = 1;
+        if (status === 'spinning' && this.state === 'idle') {
+            // Per-device mutual lock: if wheel is active on this device, don't proceed
+            if (window[lockKey] && window[lockKey] !== 'superspin') return;
+            window[lockKey] = 'superspin';
+            this.spinStartedAt = spinStartedAt;
+            this.showOverlay();
             this.state = 'spinning';
+            this.reelAlpha = 1;
 
         } else if (status === 'stopping' && this.state === 'spinning') {
             this.beginStopping(selectedFieldIndex);
@@ -120,8 +134,11 @@ class SuperSpinApp {
             // Unexpected reset from server – snap back to black
             this.state = 'idle';
             this.reelAlpha = 0;
+            this.spinStartedAt = null;
             this.resultOverlay.classList.remove('visible');
             this.stopFireworks();
+            this.hideOverlay();
+            window[lockKey] = null;
         }
     }
 
@@ -129,11 +146,18 @@ class SuperSpinApp {
 
     beginStopping(fieldIndex) {
         const n = this.fields.length;
+        // easeOutCubic derivative at t=0 is 3 * totalOffset / STOP_DURATION_S.
+        // To ensure initial deceleration speed never exceeds SPIN_SPEED:
+        //   totalOffset must be >= SPIN_SPEED * STOP_DURATION_S / 3
+        const STOP_DURATION_S = STOP_DURATION_MS / 1000;
+        const minOffset = SPIN_SPEED * STOP_DURATION_S / 3;  // = 24 items at current settings
+
         // Land so field fieldIndex is centred: scrollOffset ≡ fieldIndex (mod n)
-        const target = Math.ceil(this.scrollOffset / n) * n + fieldIndex;
-        const minExtra = SPIN_SPEED * (STOP_DURATION_MS / 1000) * 0.5;
-        let totalOffset = target - this.scrollOffset;
-        if (totalOffset < minExtra) totalOffset += n * Math.ceil((minExtra - totalOffset) / n);
+        const floored = Math.floor(this.scrollOffset / n) * n + fieldIndex;
+        let totalOffset = floored - this.scrollOffset;
+        // Ensure forward motion and enough distance
+        if (totalOffset <= 0) totalOffset += n;
+        while (totalOffset < minOffset) totalOffset += n;
 
         this.state           = 'stopping';
         this.stopStartOffset = this.scrollOffset;
@@ -150,12 +174,7 @@ class SuperSpinApp {
         const dt = Math.min((ts - this.lastFrameTime) / 1000, 0.05);
         this.lastFrameTime = ts;
 
-        if (this.state === 'enabled') {
-            // Animate reel fade-in
-            const t = Math.min((ts - this.enabledAt) / REEL_FADEIN_MS, 1);
-            this.reelAlpha = easeOutCubic(t);
-
-        } else if (this.state === 'spinning') {
+        if (this.state === 'spinning') {
             this.reelAlpha = 1;
             this.scrollOffset += SPIN_SPEED * dt;
 
@@ -207,7 +226,47 @@ class SuperSpinApp {
         this.drawCasinoFrame(ts);
         ctx.restore();
 
+        if (this.state === 'spinning' && this.spinStartedAt !== null) {
+            this.drawCountdown();
+        }
+
         if (this.particles.length > 0) this.drawParticles();
+    }
+
+    drawCountdown() {
+        const { ctx } = this;
+        const now = Date.now();
+        const elapsedSecs = (now - this.spinStartedAt) / 1000;
+        const remaining = Math.max(0, AUTO_STOP_SECONDS - elapsedSecs);
+        const fraction = remaining / AUTO_STOP_SECONDS;
+
+        const x = 52, y = 52, r = 36;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(x, y, r - 5, 0, 2 * Math.PI);
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.lineWidth = 7;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(x, y, r - 5, -Math.PI / 2, -Math.PI / 2 + fraction * 2 * Math.PI);
+        ctx.strokeStyle = remaining > 4 ? '#48bb78' : '#fc8181';
+        ctx.lineWidth = 7;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 21px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(Math.ceil(remaining), x, y);
+        ctx.restore();
     }
 
     drawReel(ts) {
@@ -454,8 +513,27 @@ class SuperSpinApp {
             this.stopFireworks();
             this.state = 'idle';
             this.reelAlpha = 0;
-            fetch('/api/superspin/complete').catch(() => {});
+            this.spinStartedAt = null;
+            this.hideOverlay();
+            window[`__spinnerActive_${this.pageDevice}`] = null;
+            const completeUrl = this.pageDevice !== null ? `/api/superspin/complete?device=${this.pageDevice}` : '/api/superspin/complete';
+            fetch(completeUrl).catch(() => {});
         }, RESULT_DURATION_MS);
+    }
+
+    showOverlay() {
+        this.overlay.classList.add('active');
+        this.introStartTime = performance.now();
+    }
+
+    hideOverlay() {
+        this.outroStartTime = performance.now();
+        setTimeout(() => {
+            if (this.outroStartTime !== null) {
+                this.overlay.classList.remove('active');
+                this.outroStartTime = null;
+            }
+        }, 510);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

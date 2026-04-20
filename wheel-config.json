@@ -3,7 +3,7 @@
     {
       "label": "Bier",
       "color": "#e53e3e",
-      "probability": 0.03,
+      "probability": 0.10,
       "fireworks": true
     },
     {
@@ -15,25 +15,25 @@
     {
       "label": "Softdrink",
       "color": "#2b6cb0",
-      "probability": 0.07,
+      "probability": 0.10,
       "fireworks": true
     },
     {
-      "label": "Putzschicht",
+      "label": "Applaus",
       "color": "#d69e2e",
-      "probability": 0.08,
+      "probability": 0.15,
       "fireworks": true
     },
     {
       "label": "Nichts",
       "color": "#805ad5",
       "probability": 0.10,
-      "fireworks": true
+      "fireworks": false
     },
     {
       "label": "Shot",
       "color": "#3182ce",
-      "probability": 0.12,
+      "probability": 0.20,
       "fireworks": true
     },
     {
@@ -43,21 +43,9 @@
       "fireworks": true
     },
     {
-      "label": "Zitronenscheibe",
-      "color": "#319795",
-      "probability": 0.15,
-      "fireworks": true
-    },
-    {
-      "label": "Papierschirm",
-      "color": "#2f855a",
-      "probability": 0.15,
-      "fireworks": true
-    },
-    {
-      "label": "Long Drink",
+      "label": "Barbot coupon",
       "color": "#9b2c2c",
-      "probability": 0.10,
+      "probability": 0.15,
       "fireworks": true
     }
   ]

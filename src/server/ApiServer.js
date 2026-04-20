@@ -22,23 +22,11 @@ class ApiServer {
         const superspinConfigPath = path.join(__dirname, '..', '..', 'superspin-config.json');
         this.superspinFields = JSON.parse(fs.readFileSync(superspinConfigPath, 'utf-8')).fields;
 
-        // Wheel spin state machine
-        this.wheelState = {
-            status: 'idle',        // 'idle' | 'spinning' | 'stopping'
-            selectedFieldIndex: null,
-            spinStartedAt: null,   // Date.now() when spin started
-            deviceId: null,        // integer device id that triggered the spin
-            autoStopTimer: null
-        };
-
-        // Superspin state machine
-        this.superspinState = {
-            status: 'idle',        // 'idle' | 'enabled' | 'spinning' | 'stopping'
-            selectedFieldIndex: null,
-            spinStartedAt: null,
-            deviceId: null,
-            autoStopTimer: null
-        };
+        // Per-device state maps: key = deviceId (integer), value = state object
+        // Each device has its own independent spin and superspin slot.
+        // Spin and superspin for the *same* device are mutually exclusive.
+        this.wheelStates = {};    // { [deviceId]: { status, selectedFieldIndex, spinStartedAt, autoStopTimer } }
+        this.superspinStates = {}; // { [deviceId]: { status, selectedFieldIndex, spinStartedAt, autoStopTimer } }
 
         this._configureMiddleware();
         this._configureRoutes();
@@ -141,182 +129,126 @@ class ApiServer {
 
         // ── Spin Wheel Routes ─────────────────────────────────────────────────
 
-        // Serve spin page
-        this.app.get('/spin', (_req, res) => {
-            res.sendFile(path.join(__dirname, '..', '..', 'public', 'spin.html'));
-        });
-
         // Wheel config (fields without sensitive data)
         this.app.get('/api/spin/config', (_req, res) => {
             res.json({ fields: this.wheelFields });
         });
 
-        // Current wheel state (polled by the browser)
-        this.app.get('/api/spin/state', (_req, res) => {
-            const { status, selectedFieldIndex, spinStartedAt, deviceId } = this.wheelState;
-            res.json({ status, selectedFieldIndex, spinStartedAt, deviceId });
+        // Current wheel state for a device (polled by the browser)
+        // ?device=<integer> – returns idle state if device has no active spin
+        this.app.get('/api/spin/state', (req, res) => {
+            const dId = this._parseDevice(req);
+            const state = this.wheelStates[dId] || { status: 'idle', selectedFieldIndex: null, spinStartedAt: null };
+            res.json({ status: state.status, selectedFieldIndex: state.selectedFieldIndex, spinStartedAt: state.spinStartedAt, deviceId: dId });
         });
 
-        // Start spinning – only allowed when idle
-        // Optional query param: ?device=<integer>
+        // Start spinning – per-device; blocked if superspin is active for same device
         this.app.get('/api/spin/start', (req, res) => {
-            if (this.wheelState.status !== 'idle') {
-                return res.status(409).json({ error: 'Wheel is not idle', status: this.wheelState.status });
+            const dId = this._parseDevice(req);
+            const ws = this.wheelStates[dId];
+            if (ws && ws.status !== 'idle') {
+                return res.status(409).json({ error: 'Wheel is not idle for this device', status: ws.status });
+            }
+            const ss = this.superspinStates[dId];
+            if (ss && ss.status !== 'idle') {
+                return res.status(409).json({ error: 'Superspin is active for this device', status: ss.status });
             }
 
-            const deviceId = req.query.device !== undefined ? parseInt(req.query.device, 10) : null;
             const fieldIndex = this._selectWeightedField();
-            this.wheelState.status = 'spinning';
-            this.wheelState.selectedFieldIndex = fieldIndex;
-            this.wheelState.spinStartedAt = Date.now();
-            this.wheelState.deviceId = Number.isFinite(deviceId) ? deviceId : null;
+            const state = { status: 'spinning', selectedFieldIndex: fieldIndex, spinStartedAt: Date.now(), autoStopTimer: null };
+            state.autoStopTimer = setTimeout(() => {
+                if (state.status === 'spinning') state.status = 'stopping';
+            }, 10000);
+            this.wheelStates[dId] = state;
 
-            // Auto-stop after 10 s if /api/spin/stop is not called
-            const AUTO_STOP_MS = 10000;
-            this.wheelState.autoStopTimer = setTimeout(() => {
-                if (this.wheelState.status === 'spinning') {
-                    this.wheelState.status = 'stopping';
-                }
-            }, AUTO_STOP_MS);
-
-            res.json({ status: 'started', fieldIndex, deviceId: this.wheelState.deviceId });
+            res.json({ status: 'started', fieldIndex, deviceId: dId });
         });
 
-        // Stop spinning – only allowed while spinning
-        // Optional query param: ?device=<integer>
-        // Device-locking: if spin was started with a device ID, stop must come from the same device
+        // Stop spinning – only the device that started can stop
         this.app.get('/api/spin/stop', (req, res) => {
-            if (this.wheelState.status !== 'spinning') {
-                return res.status(409).json({ error: 'Wheel is not spinning', status: this.wheelState.status });
+            const dId = this._parseDevice(req);
+            const state = this.wheelStates[dId];
+            if (!state || state.status !== 'spinning') {
+                return res.status(409).json({ error: 'Wheel is not spinning for this device' });
             }
 
-            const stopDeviceId = req.query.device !== undefined ? parseInt(req.query.device, 10) : null;
+            clearTimeout(state.autoStopTimer);
+            state.autoStopTimer = null;
+            state.status = 'stopping';
 
-            // Device-locking: if spin started with a device, stop must match
-            if (this.wheelState.deviceId !== null && stopDeviceId !== this.wheelState.deviceId) {
-                return res.status(403).json({
-                    error: 'Only the device that started the spin can stop it',
-                    requiredDeviceId: this.wheelState.deviceId,
-                    attemptedDeviceId: stopDeviceId
-                });
-            }
-
-            clearTimeout(this.wheelState.autoStopTimer);
-            this.wheelState.autoStopTimer = null;
-            this.wheelState.status = 'stopping';
-
-            res.json({
-                status: 'stopping',
-                fieldIndex: this.wheelState.selectedFieldIndex,
-                stopDeviceId: Number.isFinite(stopDeviceId) ? stopDeviceId : null
-            });
+            res.json({ status: 'stopping', fieldIndex: state.selectedFieldIndex, deviceId: dId });
         });
 
         // Complete result display – browser calls this after showing result for 7 s
-        this.app.get('/api/spin/complete', (_req, res) => {
-            clearTimeout(this.wheelState.autoStopTimer);
-            this.wheelState.autoStopTimer = null;
-            this.wheelState.status = 'idle';
-            this.wheelState.selectedFieldIndex = null;
-            this.wheelState.spinStartedAt = null;
-            this.wheelState.deviceId = null;
+        this.app.get('/api/spin/complete', (req, res) => {
+            const dId = this._parseDevice(req);
+            const state = this.wheelStates[dId];
+            if (state) {
+                clearTimeout(state.autoStopTimer);
+                delete this.wheelStates[dId];
+            }
             res.json({ status: 'idle' });
         });
 
         // ── Super Spin Routes ─────────────────────────────────────────────────
-
-        // Serve superspin page
-        this.app.get('/superspin', (_req, res) => {
-            res.sendFile(path.join(__dirname, '..', '..', 'public', 'superspin.html'));
-        });
 
         // Superspin config
         this.app.get('/api/superspin/config', (_req, res) => {
             res.json({ fields: this.superspinFields });
         });
 
-        // Current superspin state (polled by browser)
-        this.app.get('/api/superspin/state', (_req, res) => {
-            const { status, selectedFieldIndex, spinStartedAt, deviceId } = this.superspinState;
-            res.json({ status, selectedFieldIndex, spinStartedAt, deviceId });
+        // Current superspin state for a device
+        this.app.get('/api/superspin/state', (req, res) => {
+            const dId = this._parseDevice(req);
+            const state = this.superspinStates[dId] || { status: 'idle', selectedFieldIndex: null, spinStartedAt: null };
+            res.json({ status: state.status, selectedFieldIndex: state.selectedFieldIndex, spinStartedAt: state.spinStartedAt, deviceId: dId });
         });
 
-        // Enable superspin – makes the reel appear on screen (idle → enabled)
-        this.app.get('/api/superspin/enable', (req, res) => {
-            if (this.superspinState.status !== 'idle') {
-                return res.status(409).json({ error: 'Superspin is not idle', status: this.superspinState.status });
-            }
-
-            const deviceId = req.query.device !== undefined ? parseInt(req.query.device, 10) : null;
-            // Pre-select the winning field now so it is fixed before spinning starts
-            const fieldIndex = this._selectWeightedFieldFrom(this.superspinFields);
-            this.superspinState.status = 'enabled';
-            this.superspinState.selectedFieldIndex = fieldIndex;
-            this.superspinState.spinStartedAt = null;
-            this.superspinState.deviceId = Number.isFinite(deviceId) ? deviceId : null;
-
-            res.json({ status: 'enabled', fieldIndex, deviceId: this.superspinState.deviceId });
-        });
-
-        // Start superspin – only when enabled (reel must be visible first)
+        // Start superspin – per-device; blocked if wheel is active for same device
         this.app.get('/api/superspin/start', (req, res) => {
-            if (this.superspinState.status !== 'enabled') {
-                return res.status(409).json({ error: 'Superspin is not enabled', status: this.superspinState.status });
+            const dId = this._parseDevice(req);
+            const ss = this.superspinStates[dId];
+            if (ss && ss.status !== 'idle') {
+                return res.status(409).json({ error: 'Superspin is not idle for this device', status: ss.status });
+            }
+            const ws = this.wheelStates[dId];
+            if (ws && ws.status !== 'idle') {
+                return res.status(409).json({ error: 'Wheel is active for this device', status: ws.status });
             }
 
-            const deviceId = req.query.device !== undefined ? parseInt(req.query.device, 10) : null;
-            if (this.superspinState.deviceId !== null && Number.isFinite(deviceId) && deviceId !== this.superspinState.deviceId) {
-                return res.status(403).json({ error: 'Device mismatch', requiredDeviceId: this.superspinState.deviceId });
-            }
+            const fieldIndex = this._selectWeightedFieldFrom(this.superspinFields);
+            const state = { status: 'spinning', selectedFieldIndex: fieldIndex, spinStartedAt: Date.now(), autoStopTimer: null };
+            state.autoStopTimer = setTimeout(() => {
+                if (state.status === 'spinning') state.status = 'stopping';
+            }, 10000);
+            this.superspinStates[dId] = state;
 
-            this.superspinState.status = 'spinning';
-            this.superspinState.spinStartedAt = Date.now();
-
-            const AUTO_STOP_MS = 10000;
-            this.superspinState.autoStopTimer = setTimeout(() => {
-                if (this.superspinState.status === 'spinning') {
-                    this.superspinState.status = 'stopping';
-                }
-            }, AUTO_STOP_MS);
-
-            res.json({ status: 'started', fieldIndex: this.superspinState.selectedFieldIndex, deviceId: this.superspinState.deviceId });
+            res.json({ status: 'started', fieldIndex, deviceId: dId });
         });
 
-        // Stop superspin – only while spinning
+        // Stop superspin
         this.app.get('/api/superspin/stop', (req, res) => {
-            if (this.superspinState.status !== 'spinning') {
-                return res.status(409).json({ error: 'Superspin is not spinning', status: this.superspinState.status });
+            const dId = this._parseDevice(req);
+            const state = this.superspinStates[dId];
+            if (!state || state.status !== 'spinning') {
+                return res.status(409).json({ error: 'Superspin is not spinning for this device' });
             }
 
-            const stopDeviceId = req.query.device !== undefined ? parseInt(req.query.device, 10) : null;
+            clearTimeout(state.autoStopTimer);
+            state.autoStopTimer = null;
+            state.status = 'stopping';
 
-            if (this.superspinState.deviceId !== null && stopDeviceId !== this.superspinState.deviceId) {
-                return res.status(403).json({
-                    error: 'Only the device that started the superspin can stop it',
-                    requiredDeviceId: this.superspinState.deviceId,
-                    attemptedDeviceId: stopDeviceId
-                });
-            }
-
-            clearTimeout(this.superspinState.autoStopTimer);
-            this.superspinState.autoStopTimer = null;
-            this.superspinState.status = 'stopping';
-
-            res.json({
-                status: 'stopping',
-                fieldIndex: this.superspinState.selectedFieldIndex,
-                stopDeviceId: Number.isFinite(stopDeviceId) ? stopDeviceId : null
-            });
+            res.json({ status: 'stopping', fieldIndex: state.selectedFieldIndex, deviceId: dId });
         });
 
         // Complete superspin result display
-        this.app.get('/api/superspin/complete', (_req, res) => {
-            clearTimeout(this.superspinState.autoStopTimer);
-            this.superspinState.autoStopTimer = null;
-            this.superspinState.status = 'idle';
-            this.superspinState.selectedFieldIndex = null;
-            this.superspinState.spinStartedAt = null;
-            this.superspinState.deviceId = null;
+        this.app.get('/api/superspin/complete', (req, res) => {
+            const dId = this._parseDevice(req);
+            const state = this.superspinStates[dId];
+            if (state) {
+                clearTimeout(state.autoStopTimer);
+                delete this.superspinStates[dId];
+            }
             res.json({ status: 'idle' });
         });
 
@@ -326,9 +258,23 @@ class ApiServer {
             res.sendFile(path.join(__dirname, '..', '..', 'public', 'index.html'));
         });
 
+        this.app.get('/screen1', (_req, res) => {
+            res.sendFile(path.join(__dirname, '..', '..', 'public', 'screen1.html'));
+        });
+
+        this.app.get('/screen2', (_req, res) => {
+            res.sendFile(path.join(__dirname, '..', '..', 'public', 'screen2.html'));
+        });
+
         this.app.get('/control', (_req, res) => {
             res.sendFile(path.join(__dirname, '..', '..', 'public', 'control.html'));
         });
+    }
+
+    /** Parse ?device=<int> query param; returns the integer or null */
+    _parseDevice(req) {
+        const v = parseInt(req.query.device, 10);
+        return Number.isFinite(v) ? v : null;
     }
 
     /** Weighted random selection over wheel fields */
