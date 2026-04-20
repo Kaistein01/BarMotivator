@@ -52,6 +52,15 @@ class Database {
         });
     }
 
+    async getAllEntriesWithAll() {
+        return new Promise((resolve, reject) => {
+            this.db.all(`SELECT id, timestamp, category, Bier, Cocktail, Shot, weighted_sum FROM entries ORDER BY timestamp ASC`, [], (err, rows) => {
+                if (err) reject(err);
+                else resolve(rows);
+            });
+        });
+    }
+
     async clearEntries() {
         return new Promise((resolve, reject) => {
             this.db.run(`DELETE FROM entries`, [], function (err) {

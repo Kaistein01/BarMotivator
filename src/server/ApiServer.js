@@ -114,6 +114,20 @@ class ApiServer {
             }
         });
 
+        // Export Data as CSV Route
+        this.app.get('/api/export-csv', async (_req, res) => {
+            try {
+                const entries = await this.db.getAllEntriesWithAll();
+                const csv = this._convertToCSV(entries);
+                res.setHeader('Content-Type', 'text/csv');
+                res.setHeader('Content-Disposition', 'attachment; filename="export.csv"');
+                res.send(csv);
+            } catch (err) {
+                console.error('Error exporting data:', err);
+                res.status(500).json({ error: 'Export error' });
+            }
+        });
+
         // Debug Toggle Routes
         this.app.get('/api/debug', (_req, res) => {
             res.json({ debug: this.isDebugMode });
@@ -331,6 +345,31 @@ class ApiServer {
             if (r <= 0) return i;
         }
         return fields.length - 1;
+    }
+
+    /** Convert entries array to CSV format */
+    _convertToCSV(entries) {
+        if (!entries || entries.length === 0) {
+            return 'id,timestamp,category,Bier,Cocktail,Shot,weighted_sum\n';
+        }
+
+        const headers = ['id', 'timestamp', 'category', 'Bier', 'Cocktail', 'Shot', 'weighted_sum'];
+        const rows = entries.map(entry => [
+            entry.id,
+            entry.timestamp,
+            entry.category,
+            entry.Bier,
+            entry.Cocktail,
+            entry.Shot,
+            entry.weighted_sum
+        ].map(cell => {
+            if (typeof cell === 'string' && cell.includes(',')) {
+                return `"${cell.replace(/"/g, '""')}"`;
+            }
+            return cell;
+        }).join(','));
+
+        return headers.join(',') + '\n' + rows.join('\n');
     }
 
     getApp() {

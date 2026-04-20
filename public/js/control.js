@@ -9,6 +9,7 @@ class ControlPanel {
 
         this.btnToggleDebug = document.getElementById('debug-toggle-btn');
         this.btnClear = document.getElementById('clear-btn');
+        this.btnExport = document.getElementById('export-btn');
         this.testingTools = document.getElementById('testing-tools');
         this.statusInfo = document.getElementById('status');
         this.inputSamples = document.getElementById('test-samples');
@@ -20,6 +21,7 @@ class ControlPanel {
     }
 
     _bindEvents() {
+        this.btnExport.addEventListener('click', () => this.exportData());
         this.btnClear.addEventListener('click', () => this.clearData());
         this.btnToggleDebug.addEventListener('click', () => this.toggleDebug());
         this.btnCustomTest.addEventListener('click', () => this.runCustomStressTest());
@@ -62,6 +64,40 @@ class ControlPanel {
             this.btnToggleDebug.style.background = "#475569";
             this.testingTools.style.opacity = "0.5";
             this.testingTools.style.pointerEvents = "none";
+        }
+    }
+
+    async exportData() {
+        this.btnExport.disabled = true;
+        this.btnExport.innerText = "Exporting...";
+        this.statusInfo.className = "";
+        this.statusInfo.innerText = "";
+
+        try {
+            const res = await fetch('/api/export-csv');
+            if (res.ok) {
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `export_${new Date().toISOString().slice(0, 10)}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+
+                this.statusInfo.className = "success";
+                this.statusInfo.innerText = "✓ Data exported successfully.";
+                setTimeout(() => this.statusInfo.innerText = "", 3000);
+            } else {
+                throw new Error("Server returned " + res.status);
+            }
+        } catch (err) {
+            this.statusInfo.className = "error";
+            this.statusInfo.innerText = "❌ Error: " + err.message;
+        } finally {
+            this.btnExport.disabled = false;
+            this.btnExport.innerText = "EXPORT AS CSV";
         }
     }
 
