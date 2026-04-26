@@ -27,7 +27,7 @@ export class Leaderboard extends UIComponent {
         this.container.innerHTML = sorted.map((item, i) => {
             const rank = i + 1;
             const rankClass = rank === 1 ? 'top1' : rank === 2 ? 'top2' : rank === 3 ? 'top3' : '';
-            const rankLabel = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
+            const rankLabel = `${rank}`;
             return `
               <div class="lb-item">
                 <span class="lb-rank ${rankClass}">${rankLabel}</span>
