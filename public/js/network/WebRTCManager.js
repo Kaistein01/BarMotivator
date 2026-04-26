@@ -7,7 +7,7 @@ export class WebRTCManager {
         this.store = store;
         this.peers = {};
         this.dataChannels = {};
-        this.rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+        this.rtcConfig = { iceServers: [] };
 
         this._bindSocketEvents();
     }
